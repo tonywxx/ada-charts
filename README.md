@@ -1,28 +1,28 @@
 # ada-charts
 
-图形控件库 —— 用于后续项目的数据可视化显示。基于 **Vite + React + TypeScript** 搭建。
+A chart/visualization component library for displaying data in downstream projects. Built with **Vite + React + TypeScript**.
 
-## 技术栈
+## Tech Stack
 
-- [Vite](https://vitejs.dev/) —— 构建工具与开发服务器
-- [React 19](https://react.dev/) —— UI 框架
-- [TypeScript](https://www.typescriptlang.org/) —— 类型安全
+- [Vite](https://vitejs.dev/) — build tool and dev server
+- [React 19](https://react.dev/) — UI framework
+- [TypeScript](https://www.typescriptlang.org/) — type safety
 
-## 本地开发
+## Getting Started
 
 ```bash
 pnpm install
 pnpm dev
 ```
 
-## 构建与检查
+## Build & Checks
 
 ```bash
-pnpm build      # 类型检查 + 生产构建
-pnpm preview    # 本地预览构建产物
-pnpm lint       # 代码检查 (oxlint)
+pnpm build      # type-check + production build
+pnpm preview    # preview the production build locally
+pnpm lint       # lint (oxlint)
 ```
 
-## 说明
+## Notes
 
-本仓库用于沉淀可复用的图表 / 图形显示组件，供 AdaQ 等后续项目直接引用。
+This repository collects reusable chart/visualization display components for use in AdaQ and other downstream projects.
