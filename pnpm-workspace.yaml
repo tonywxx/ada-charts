@@ -1,0 +1,5 @@
+# Allowlist build scripts for dependencies that need them (pnpm 12).
+# esbuild requires its postinstall to fetch/link the native binary used by
+# Vite and Storybook's builder.
+allowBuilds:
+  esbuild: true
