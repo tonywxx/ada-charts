@@ -11,6 +11,8 @@ import type {
 } from "klinecharts";
 import { registerOverlay } from "klinecharts";
 import * as extensionOverlays from "@klinecharts/extension";
+import { LIGHT_THEME } from "../../theme";
+import { mergeStyles, themeStyles } from "./k-line-styles";
 import type { KChartProps, KChartResolvedProps } from "./KChart";
 
 /**
@@ -126,13 +128,13 @@ export const KCHART_DEFAULTS = {
 	theme: "light",
 
 	candleType: "candle_solid",
-	upColor: "#2DC08E",
-	downColor: "#F6465D",
-	noChangeColor: "#AAAAAA",
+	upColor: LIGHT_THEME.trendUp,
+	downColor: LIGHT_THEME.trendDown,
+	noChangeColor: LIGHT_THEME.noChange,
 	showGrid: true,
-	gridColor: "#D1D4DC",
+	gridColor: LIGHT_THEME.gridLine,
 	showCrosshair: true,
-	crosshairColor: "#76808F",
+	crosshairColor: LIGHT_THEME.crosshair,
 	textColor: "#1E2329",
 	fontSize: 12,
 	fontFamily: "Helvetica Neue, Helvetica, Arial, sans-serif",
@@ -213,189 +215,26 @@ export function normalizeKLineData(
 	return [...byTimestamp.values()].sort((a, b) => a.timestamp - b.timestamp);
 }
 
-// -------------------------------------------------------------------- style
-
 /**
- * Recursively merges a set of partial style objects, left to right. Arrays are
- * replaced wholesale (a style array is a fixed-length palette, so element-wise
- * merging would never be meaningful).
+ * Field-by-field equality for two Candles, used to tell a real data change from
+ * a re-render. `timestamp` plus the drawn values: a refreshed bar that changes
+ * only `turnover` still has to count as changed, because the axis may show it.
  *
- * 从左到右递归合并多个部分样式对象。数组整体替换（样式数组是定长调色板，逐元素合并没有意义）。
+ * 两根 K 线的逐字段相等判断，用来区分真实的数据变化与一次重渲染。除 `timestamp`
+ * 外还要比绘制值：只有 `turnover` 变化的刷新同样算变化，因为坐标轴可能显示它。
  */
-function mergeStyles(
-	...sources: Array<DeepPartial<Styles> | undefined>
-): DeepPartial<Styles> {
-	const out: Record<string, unknown> = {};
-	for (const source of sources) {
-		if (!source) continue;
-		for (const [key, value] of Object.entries(source)) {
-			const existing = out[key];
-			if (
-				value &&
-				typeof value === "object" &&
-				!Array.isArray(value) &&
-				existing &&
-				typeof existing === "object" &&
-				!Array.isArray(existing)
-			) {
-				out[key] = mergeStyles(
-					existing as DeepPartial<Styles>,
-					value as DeepPartial<Styles>,
-				);
-			} else {
-				out[key] = value;
-			}
-		}
-	}
-	return out as DeepPartial<Styles>;
+export function sameKLineData(a: KLineData, b: KLineData): boolean {
+	return (
+		a.timestamp === b.timestamp &&
+		a.open === b.open &&
+		a.high === b.high &&
+		a.low === b.low &&
+		a.close === b.close &&
+		a.volume === b.volume &&
+		a.turnover === b.turnover
+	);
 }
 
-const LIGHT_STYLES: DeepPartial<Styles> = {
-	grid: {
-		show: true,
-		horizontal: { show: true, color: "#D1D4DC", style: "solid", size: 1 },
-		vertical: { show: true, color: "#D1D4DC", style: "solid", size: 1 },
-	},
-	candle: {
-		bar: {
-			upColor: "#2DC08E",
-			downColor: "#F6465D",
-			noChangeColor: "#AAAAAA",
-			upBorderColor: "#2DC08E",
-			downBorderColor: "#F6465D",
-			noChangeBorderColor: "#AAAAAA",
-			upWickColor: "#2DC08E",
-			downWickColor: "#F6465D",
-			noChangeWickColor: "#AAAAAA",
-		},
-		area: {
-			lineColor: "#1677FF",
-			backgroundColor: [
-				{ offset: 0, color: "rgba(22, 119, 255, 0.01)" },
-				{ offset: 1, color: "rgba(22, 119, 255, 0.2)" },
-			],
-			point: { color: "#1677FF", rippleColor: "#1677FF" },
-		},
-		priceMark: {
-			show: true,
-			high: { show: true, color: "#76808F" },
-			low: { show: true, color: "#76808F" },
-			last: {
-				show: true,
-				upColor: "#2DC08E",
-				downColor: "#F6465D",
-				noChangeColor: "#AAAAAA",
-				line: { show: true, style: "dashed", size: 1, dashedValue: [2, 2] },
-				text: { show: true, color: "#FFFFFF", size: 10 },
-			},
-		},
-		tooltip: {
-			showRule: "follow_cross",
-			showType: "standard",
-			title: { color: "#76808F", size: 12 },
-			legend: { color: "#76808F", size: 12 },
-		},
-	},
-	xAxis: {
-		show: true,
-		axisLine: { show: true, color: "#76808F", size: 1 },
-		tickLine: { show: true, color: "#76808F", size: 1, length: 3 },
-		tickText: { show: true, color: "#76808F", size: 12 },
-	},
-	yAxis: {
-		show: true,
-		axisLine: { show: true, color: "#76808F", size: 1 },
-		tickLine: { show: true, color: "#76808F", size: 1, length: 3 },
-		tickText: { show: true, color: "#76808F", size: 12 },
-	},
-	separator: { size: 1, color: "#76808F", activeBackgroundColor: "#D1D4DC" },
-	crosshair: {
-		show: true,
-		horizontal: {
-			show: true,
-			line: { show: true, color: "#76808F", style: "dashed", size: 1, dashedValue: [4, 2] },
-			text: { show: true, color: "#FFFFFF", size: 12 },
-		},
-		vertical: {
-			show: true,
-			line: { show: true, color: "#76808F", style: "dashed", size: 1, dashedValue: [4, 2] },
-			text: { show: true, color: "#FFFFFF", size: 12 },
-		},
-	},
-	indicator: {
-		ohlc: { upColor: "#2DC08E", downColor: "#F6465D", noChangeColor: "#AAAAAA" },
-		bars: [{ upColor: "rgba(45, 192, 142, 0.7)", downColor: "rgba(246, 70, 93, 0.7)", noChangeColor: "#AAAAAA" }],
-		lines: [
-			{ color: "#888888", size: 1 },
-			{ color: "#FEC108", size: 1 },
-			{ color: "#F52887", size: 1 },
-			{ color: "#485FB1", size: 1 },
-			{ color: "#664499", size: 1 },
-		],
-		circles: [{ upColor: "rgba(45, 192, 142, 0.7)", downColor: "rgba(246, 70, 93, 0.7)", noChangeColor: "#AAAAAA" }],
-		lastValueMark: { show: false },
-		tooltip: { showRule: "always", title: { showName: true, showParams: true }, legend: { color: "#76808F", size: 12 } },
-	},
-	overlay: {
-		point: { color: "#1677FF", borderColor: "#1677FF", activeColor: "#1677FF", activeBorderColor: "#1677FF" },
-		line: { color: "#1677FF", size: 1, style: "solid" },
-		rect: { color: "rgba(22, 119, 255, 0.2)", borderColor: "#1677FF" },
-		text: { color: "#FFFFFF", size: 12 },
-	},
-};
-
-const DARK_STYLES: DeepPartial<Styles> = {
-	grid: {
-		horizontal: { color: "#2B2B43" },
-		vertical: { color: "#2B2B43" },
-	},
-	candle: {
-		bar: {
-			upColor: "#2DC08E",
-			downColor: "#F6465D",
-			upBorderColor: "#2DC08E",
-			downBorderColor: "#F6465D",
-			upWickColor: "#2DC08E",
-			downWickColor: "#F6465D",
-		},
-		area: {
-			lineColor: "#1677FF",
-			backgroundColor: [
-				{ offset: 0, color: "rgba(22, 119, 255, 0.01)" },
-				{ offset: 1, color: "rgba(22, 119, 255, 0.35)" },
-			],
-		},
-		priceMark: {
-			high: { color: "#B2B5BE" },
-			low: { color: "#B2B5BE" },
-			last: { text: { color: "#FFFFFF" } },
-		},
-		tooltip: { title: { color: "#B2B5BE" }, legend: { color: "#B2B5BE" } },
-	},
-	xAxis: {
-		axisLine: { color: "#4C525E" },
-		tickLine: { color: "#4C525E" },
-		tickText: { color: "#B2B5BE" },
-	},
-	yAxis: {
-		axisLine: { color: "#4C525E" },
-		tickLine: { color: "#4C525E" },
-		tickText: { color: "#B2B5BE" },
-	},
-	separator: { color: "#4C525E", activeBackgroundColor: "#2B2B43" },
-	crosshair: {
-		horizontal: { line: { color: "#B2B5BE" }, text: { color: "#FFFFFF" } },
-		vertical: { line: { color: "#B2B5BE" }, text: { color: "#FFFFFF" } },
-	},
-	indicator: {
-		ohlc: { upColor: "#2DC08E", downColor: "#F6465D" },
-		tooltip: { legend: { color: "#B2B5BE" } },
-	},
-	overlay: {
-		point: { color: "#1677FF", borderColor: "#1677FF", activeColor: "#1677FF", activeBorderColor: "#1677FF" },
-		line: { color: "#1677FF" },
-	},
-};
 
 /**
  * Builds the deep {@link Styles} object from the flat convenience props and the
@@ -411,8 +250,7 @@ const DARK_STYLES: DeepPartial<Styles> = {
  */
 export function buildStyles(props: KChartResolvedProps): DeepPartial<Styles> {
 	const convenience = buildConvenienceStyles(props);
-	const theme = props.theme === "dark" ? DARK_STYLES : LIGHT_STYLES;
-	return mergeStyles(theme, convenience, props.styles);
+	return mergeStyles(themeStyles(props.theme), convenience, props.styles);
 }
 
 /** Convenience-prop-derived partial styles (everything except theme + raw). 由便捷 props 推导的部分样式（主题与原始 styles 之外）。 */
@@ -422,7 +260,7 @@ function buildConvenienceStyles(
 	const s: DeepPartial<Styles> = {};
 
 	if (props.gridColor !== undefined || props.showGrid !== undefined) {
-		const color = props.gridColor ?? LIGHT_STYLES.grid?.horizontal?.color;
+		const color = props.gridColor ?? LIGHT_THEME.gridLine;
 		s.grid = {
 			show: props.showGrid,
 			horizontal: { show: props.showGrid, color },

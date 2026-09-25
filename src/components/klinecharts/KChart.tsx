@@ -26,6 +26,8 @@ import {
 	type ZoomAnchorType,
 } from "klinecharts";
 import { memo, useEffect, useMemo, useRef } from "react";
+import { decideDataPatch } from "../../data-patch";
+import { useEngineMount } from "../../engine-mount";
 import {
 	KCHART_DEFAULTS,
 	areKChartPropsEqual,
@@ -37,6 +39,7 @@ import {
 	resolveKChartProps,
 	resolvePeriod,
 	resolveSymbol,
+	sameKLineData,
 	structuralKey,
 } from "./k-chart-options";
 
@@ -373,8 +376,6 @@ function KChart(props: KChartProps) {
 	const resolved = useMemo(() => resolveKChartProps(props), [props]);
 	const data = useMemo(() => normalizeKLineData(resolved.data), [resolved.data]);
 
-	const containerRef = useRef<HTMLDivElement>(null);
-	const chartRef = useRef<Chart | null>(null);
 	/** Latest dataset, read synchronously by the {@link DataLoader} on `init`. */
 	const dataRef = useRef<KLineData[]>(data);
 	/** The real-time push callback handed back by `subscribeBar`. */
@@ -384,10 +385,8 @@ function KChart(props: KChartProps) {
 	const overlayIdsRef = useRef<string[]>([]);
 	/** Guards the mount-seeded load from being re-seeded as a "change". */
 	const firstDataRunRef = useRef(true);
-	const prevDataSigRef = useRef<{ len: number; first: number | undefined }>({
-		len: -1,
-		first: undefined,
-	});
+	/** The dataset the previous commit applied, so a change is decided, not guessed. */
+	const prevDataRef = useRef<KLineData[]>([]);
 	/** Latest props + resolved options, read by run-once effects and handlers. */
 	const latestRef = useRef({ props, resolved });
 
@@ -406,76 +405,73 @@ function KChart(props: KChartProps) {
 
 	// Create the chart exactly once; every later change goes through setters.
 	// 图表只创建一次，后续所有变更都走 setter。
-	useEffect(() => {
-		const container = containerRef.current;
-		if (!container) return;
-		ensureExtensionOverlays();
+	const unsubscribeActionsRef = useRef<(() => void) | null>(null);
+	const { setContainer, engine } = useEngineMount<Chart>({
+		create: (container) => {
+			ensureExtensionOverlays();
 
-		const chart = init(container, buildInitOptions(latestRef.current.resolved));
-		if (!chart) return;
-		chartRef.current = chart;
+			const chart = init(container, buildInitOptions(latestRef.current.resolved));
+			if (!chart) return null;
 
-		const external = latestRef.current.resolved.dataLoader;
-		if (external) {
-			chart.setDataLoader(external);
-		} else {
+			const external = latestRef.current.resolved.dataLoader;
 			chart.setDataLoader(
-				createMemoryDataLoader({
-					getBars: () => dataRef.current,
-					onSubscribe: (push) => {
-						pushRef.current = push;
-					},
-					onUnsubscribe: () => {
-						pushRef.current = null;
-					},
-				}),
+				external ??
+					createMemoryDataLoader({
+						getBars: () => dataRef.current,
+						onSubscribe: (push) => {
+							pushRef.current = push;
+						},
+						onUnsubscribe: () => {
+							pushRef.current = null;
+						},
+					}),
 			);
-		}
-		// symbol + period are what let the loader's init request fire at all.
-		// symbol 与 period 是 loader 的 init 请求得以触发的前提。
-		chart.setSymbol(resolveSymbol(latestRef.current.resolved));
-		chart.setPeriod(resolvePeriod(latestRef.current.resolved));
+			// symbol + period are what let the loader's init request fire at all.
+			// symbol 与 period 是 loader 的 init 请求得以触发的前提。
+			chart.setSymbol(resolveSymbol(latestRef.current.resolved));
+			chart.setPeriod(resolvePeriod(latestRef.current.resolved));
 
-		// Every action handler dispatches through the ref, so subscriptions made
-		// once at mount always see the latest callback.
-		// 所有事件处理函数都经由该 ref 分发，因此挂载时建立的订阅始终拿到最新回调。
-		const handlers = ACTION_KEYS.map((key) => {
-			const type = ACTIONS[key];
-			const handler: ActionCallback = (param) =>
-				latestRef.current.props[key]?.(param);
-			chart.subscribeAction(type, handler);
-			return [type, handler] as const;
-		});
+			// Every action handler dispatches through the ref, so subscriptions made
+			// once at mount always see the latest callback.
+			// 所有事件处理函数都经由该 ref 分发，因此挂载时建立的订阅始终拿到最新回调。
+			const handlers = ACTION_KEYS.map((key) => {
+				const type = ACTIONS[key];
+				const handler: ActionCallback = (param) =>
+					latestRef.current.props[key]?.(param);
+				chart.subscribeAction(type, handler);
+				return [type, handler] as const;
+			});
+			unsubscribeActionsRef.current = () => {
+				for (const [type, handler] of handlers) {
+					chart.unsubscribeAction(type, handler);
+				}
+			};
 
-		// `klinecharts` only listens to window resize; a ResizeObserver on the
-		// wrapper also covers container-only growth (flex panes, Storybook).
-		// `klinecharts` 只监听 window resize；给外层容器加 ResizeObserver 可覆盖仅容器
-		// 尺寸变化的场景（flex 面板、Storybook）。
-		const observer = new ResizeObserver(() => chart.resize());
-		observer.observe(container);
-
-		latestRef.current.props.onChartReady?.(chart);
-
-		return () => {
-			observer.disconnect();
-			for (const [type, handler] of handlers) {
-				chart.unsubscribeAction(type, handler);
-			}
+			latestRef.current.props.onChartReady?.(chart);
+			return chart;
+		},
+		// `klinecharts` only listens to window resize; the observer on the wrapper is
+		// what covers container-only growth (flex panes, Storybook panels).
+		// `klinecharts` 只监听 window resize；覆盖仅容器尺寸变化（flex 面板、Storybook
+		// 分栏）靠这层 ResizeObserver。
+		resize: (chart) => chart.resize(),
+		destroy: (chart) => {
+			unsubscribeActionsRef.current?.();
+			unsubscribeActionsRef.current = null;
 			indicatorIdsRef.current = [];
 			overlayIdsRef.current = [];
 			pushRef.current = null;
 			firstDataRunRef.current = true;
-			prevDataSigRef.current = { len: -1, first: undefined };
-			dispose(container);
-			chartRef.current = null;
-		};
-	}, []);
+			prevDataRef.current = [];
+			dispose(chart);
+		},
+	});
 
 	// Non-structural options + behaviour, pushed after every render. Undefined
 	// props fall through to the library's own defaults.
 	// 非结构性选项与行为：每次渲染后下发。未定义的 prop 回退到库自身默认值。
 	useEffect(() => {
-		const chart = chartRef.current;
+		const chart = engine();
 		if (!chart) return;
 		chart.setStyles(buildStyles(resolved));
 		if (resolved.locale) chart.setLocale(resolved.locale);
@@ -503,42 +499,53 @@ function KChart(props: KChartProps) {
 		if (resolved.rightMinVisibleBarCount !== undefined) {
 			chart.setRightMinVisibleBarCount(resolved.rightMinVisibleBarCount);
 		}
-	}, [resolved]);
+	}, [resolved, engine]);
 
 	// Symbol identity changes re-seed through the loader's init path.
 	// 标的身份变化会经由 loader 的 init 路径重新灌入。
 	const symbolKey = JSON.stringify(resolveSymbol(resolved));
 	useEffect(() => {
-		chartRef.current?.setSymbol(resolveSymbol(latestRef.current.resolved));
-	}, [symbolKey]);
+		engine()?.setSymbol(resolveSymbol(latestRef.current.resolved));
+	}, [symbolKey, engine]);
 
 	const periodKey = JSON.stringify(resolvePeriod(resolved));
 	useEffect(() => {
-		chartRef.current?.setPeriod(resolvePeriod(latestRef.current.resolved));
-	}, [periodKey]);
+		engine()?.setPeriod(resolvePeriod(latestRef.current.resolved));
+	}, [periodKey, engine]);
 
-	// Data updates: a replaced series reseeds via the loader; an in-place last
-	// bar (streaming) takes the cheaper `update` push.
-	// 数据更新：整段替换时经 loader 重新灌入；仅末根变化（流式）走更轻量的 update 推送。
+	// Data updates: a real change to the set reseeds through the loader; a changed
+	// or newly arrived tail is pushed bar by bar.
+	// 数据更新：数据集真的变了才经 loader 重灌；仅末段变化或新增则逐根推送。
 	useEffect(() => {
-		const chart = chartRef.current;
+		const chart = engine();
 		if (!chart || resolved.dataLoader) return;
+		const previous = prevDataRef.current;
+
+		// The mount effect already seeded the loader's `init` with this dataset,
+		// so the first run only records it rather than reseeding a second time.
+		// mount effect 已用当前数据集灌过 loader 的 `init`，因此首次只记录、不重复灌入。
 		if (firstDataRunRef.current) {
 			firstDataRunRef.current = false;
-			prevDataSigRef.current = { len: data.length, first: data[0]?.timestamp };
+			prevDataRef.current = data;
 			return;
 		}
-		const first = data[0]?.timestamp;
-		const replaced =
-			prevDataSigRef.current.len !== data.length ||
-			prevDataSigRef.current.first !== first;
-		prevDataSigRef.current = { len: data.length, first };
-		if (replaced) {
+
+		const patch = decideDataPatch(previous, data, sameKLineData);
+		prevDataRef.current = data;
+		if (patch.kind === "none") return;
+
+		// `resetData` re-runs `getBars({type:"init"})`, which reads the latest set
+		// through `dataRef`, so clearing to an empty array goes the same way.
+		// `resetData` 会重跑 `getBars({type:"init"})`，而后者经 `dataRef` 读最新数据集，
+		// 所以清空也走同一条路。
+		if (patch.kind === "replace" || data.length === 0) {
 			chart.resetData();
-		} else if (pushRef.current && data.length > 0) {
-			pushRef.current(data[data.length - 1]);
+			return;
 		}
-	}, [data, resolved.dataLoader]);
+
+		const touched = patch.kind === "append" ? patch.items : [patch.item];
+		for (const bar of touched) pushRef.current?.(bar);
+	}, [data, resolved.dataLoader, engine]);
 
 	// Indicators: reconciled whenever their structural signature changes. The
 	// list itself is read through `latestRef`, so the effect depends only on the
@@ -547,7 +554,7 @@ function KChart(props: KChartProps) {
 	// 仅在组合真正变化时重建。
 	const indicatorKey = structuralKey(resolved.indicators);
 	useEffect(() => {
-		const chart = chartRef.current;
+		const chart = engine();
 		if (!chart) return;
 		for (const id of indicatorIdsRef.current) {
 			chart.removeIndicator({ id });
@@ -564,24 +571,24 @@ function KChart(props: KChartProps) {
 			if (id) created.push(id);
 		}
 		indicatorIdsRef.current = created;
-	}, [indicatorKey]);
+	}, [indicatorKey, engine]);
 
 	// Panes: applied on top of whatever the indicators created.
 	// 面板：叠加在指标所创建的面板之上。
 	const paneKey = structuralKey(resolved.panes);
 	useEffect(() => {
-		const chart = chartRef.current;
+		const chart = engine();
 		if (!chart) return;
 		for (const pane of latestRef.current.resolved.panes) {
 			chart.setPaneOptions(pane);
 		}
-	}, [paneKey]);
+	}, [paneKey, engine]);
 
 	// Overlays: drawn tools, reconciled by structural signature.
 	// 画线工具：按结构签名协调。
 	const overlayKey = structuralKey(resolved.overlays);
 	useEffect(() => {
-		const chart = chartRef.current;
+		const chart = engine();
 		if (!chart) return;
 		for (const id of overlayIdsRef.current) {
 			chart.removeOverlay({ id });
@@ -595,11 +602,11 @@ function KChart(props: KChartProps) {
 			}
 		}
 		overlayIdsRef.current = created;
-	}, [overlayKey]);
+	}, [overlayKey, engine]);
 
 	return (
 		<div
-			ref={containerRef}
+			ref={setContainer}
 			style={{
 				width: resolved.autoSize ? "100%" : resolved.width,
 				height: resolved.height,
@@ -610,4 +617,14 @@ function KChart(props: KChartProps) {
 	);
 }
 
-export default memo(KChart, areKChartPropsEqual);
+const KChartMemo = memo(KChart, areKChartPropsEqual);
+
+/**
+ * The memoized Wrapper, under both export forms: `KChart` entry files
+ * default-export it so a consumer can pick either import style.
+ *
+ * 记忆化后的 Wrapper，两种导出形式都给：入口文件同时 default 导出，
+ * 调用方两种 import 写法都能用。
+ */
+export { KChartMemo as KChart };
+export default KChartMemo;

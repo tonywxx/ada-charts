@@ -1,5 +1,11 @@
 import type { KLineData } from "klinecharts";
-import snapshot from "../../lightweight-charts/__data__/btc-usdt.json";
+import {
+	fetchOkxCandles,
+	okxSnapshotCandles,
+	okxSnapshotTimestamp,
+	OKX_INST_ID,
+	type OkxCandle,
+} from "../../../okx";
 
 /** Bar sizes the stories request from OKX. */
 export type OkxBar = "1D" | "4H" | "1m";
@@ -28,56 +34,29 @@ export interface OkxKLineSet {
 	timestamp: number;
 }
 
-const OKX_INST_ID = "BTC-USDT";
-const OKX_PATH = "https://www.okx.com/api/v5/market/candles";
-const LIMIT = 300;
-const REQUEST_TIMEOUT_MS = 8_000;
-
 const BARS: Record<OkxBar, string> = { "1D": "1D", "4H": "4H", "1m": "1m" };
 
 /**
- * Fetch candles and convert them into `klinecharts`' {@link KLineData} shape.
- * Unlike `lightweight-charts`, `klinecharts` wants millisecond `timestamp`s, so
- * OKX's native unit is kept as-is.
+ * The neutral Candle and `KLineData` carry the same fields, but `KLineData` has
+ * an index signature the neutral type does not, so the copy is structural.
  *
- * 拉取 K 线并转换为 `klinecharts` 的 {@link KLineData} 形状。与 `lightweight-charts`
- * 不同，`klinecharts` 需要毫秒级 `timestamp`，因此直接沿用 OKX 的原生单位。
+ * 中立 Candle 与 `KLineData` 字段一致，但 `KLineData` 带索引签名而中立类型没有，
+ * 所以这次浅拷贝是结构所需。
+ */
+function toKLineData(candle: OkxCandle): KLineData {
+	return { ...candle };
+}
+
+/**
+ * One bar size, live from OKX, in `klinecharts`' shape. Unlike
+ * lightweight-charts, `klinecharts` wants millisecond `timestamp`s, so OKX's
+ * native unit passes straight through.
+ *
+ * 一个周期的实时 OKX 数据，转成 `klinecharts` 形状。与 lightweight-charts 不同，
+ * `klinecharts` 要毫秒级 `timestamp`，所以 OKX 的原生单位直接沿用。
  */
 async function fetchCandles(bar: OkxBar): Promise<KLineData[]> {
-	const url = `${OKX_PATH}?instId=${OKX_INST_ID}&bar=${BARS[bar]}&limit=${LIMIT}`;
-	const response = await fetch(url, {
-		signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-		headers: { Accept: "application/json" },
-	});
-	if (!response.ok) throw new Error(`OKX ${bar}: HTTP ${response.status}`);
-
-	const payload = (await response.json()) as {
-		code: string;
-		msg?: string;
-		data?: string[][];
-	};
-	if (payload.code !== "0" || !payload.data?.length) {
-		throw new Error(`OKX ${bar}: code ${payload.code} ${payload.msg ?? ""}`.trim());
-	}
-
-	// Row layout: [ts, open, high, low, close, volume(base), turnover, …].
-	// OKX returns newest-first; `klinecharts` needs ascending time.
-	// 行格式：[时间戳, 开, 高, 低, 收, 成交量(基础), 成交额, …]；OKX 倒序返回，`klinecharts` 需升序。
-	return payload.data
-		.map((row) => {
-			const [time, open, high, low, close, volume, turnover] = row;
-			return {
-				timestamp: Number(time),
-				open: Number(open),
-				high: Number(high),
-				low: Number(low),
-				close: Number(close),
-				volume: Number(volume),
-				turnover: Number(turnover),
-			} satisfies KLineData;
-		})
-		.filter((bar0) => Number.isFinite(bar0.timestamp) && Number.isFinite(bar0.close))
-		.sort((a, b) => a.timestamp - b.timestamp);
+	return (await fetchOkxCandles(OKX_INST_ID, BARS[bar])).map(toKLineData);
 }
 
 /**
@@ -88,18 +67,13 @@ async function fetchCandles(bar: OkxBar): Promise<KLineData[]> {
  * 所要求的毫秒。
  */
 function fromSnapshot(bar: OkxBar): OkxKLineSet {
-	const generatedAt = Date.parse(snapshot.generatedAt) || Date.now();
-	const rows =
-		(snapshot.bars as Record<string, Array<Record<string, number>>>)[bar] ?? [];
-	const bars: KLineData[] = rows.map((row) => ({
-		timestamp: Math.trunc(row.time) * 1000,
-		open: row.open,
-		high: row.high,
-		low: row.low,
-		close: row.close,
-		volume: row.volume,
-	}));
-	return { instId: OKX_INST_ID, bar, bars, source: "snapshot", timestamp: generatedAt };
+	return {
+		instId: OKX_INST_ID,
+		bar,
+		bars: okxSnapshotCandles(bar).map(toKLineData),
+		source: "snapshot",
+		timestamp: okxSnapshotTimestamp(),
+	};
 }
 
 /**

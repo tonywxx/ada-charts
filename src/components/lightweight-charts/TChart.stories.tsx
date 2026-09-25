@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
+import { expect } from "storybook/test";
 import { type CSSProperties, useEffect, useState } from "react";
 import {
 	describeCandleSet,
@@ -248,7 +249,26 @@ type Story = StoryObj<typeof meta>;
  *
  * 默认配置：蜡烛图，叠加成交量、EMA 与三条参考线。
  */
-export const Candlestick: Story = {};
+export const Candlestick: Story = {
+	/**
+	 * Smoke test for the mount path: the engine attaches a canvas and sizes it to
+	 * the container. Live data arrives asynchronously, so poll for the canvas
+	 * rather than assuming it is there on the first frame.
+	 *
+	 * 挂载路径的冒烟测试：引擎会挂上 canvas 并按容器取尺寸。实时数据是异步到达的，
+	 * 所以这里轮询等 canvas，而不是假设首帧就有。
+	 */
+	play: async ({ canvasElement }) => {
+		let canvas = canvasElement.querySelector("canvas");
+		for (let attempt = 0; attempt < 100 && !canvas; attempt += 1) {
+			await new Promise((resolve) => setTimeout(resolve, 100));
+			canvas = canvasElement.querySelector("canvas");
+		}
+		expect(canvas, "TChart never attached a canvas").not.toBeNull();
+		expect(canvas!.width).toBeGreaterThan(0);
+		expect(canvas!.height).toBeGreaterThan(0);
+	},
+};
 
 /** Close-price line built from the same dataset. 使用同一数据集绘制的收盘价折线图。 */
 export const Line: Story = { args: { chartType: "line" } };

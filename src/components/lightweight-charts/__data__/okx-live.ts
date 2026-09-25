@@ -1,11 +1,14 @@
 import type { TChartDataItem, TChartMarker } from "../TChart";
-import snapshot from "./btc-usdt.json";
+import {
+	fetchOkxCandles,
+	okxSnapshotCandles,
+	okxSnapshotTimestamp,
+	OKX_INST_ID,
+	type OkxCandle,
+} from "../../../okx";
 
 /** Bar sizes the stories request from OKX. */
 export type OkxBar = "1D" | "4H" | "1m";
-
-/** Instrument every story is drawn from. */
-const OKX_INST_ID = "BTC-USDT";
 
 /**
  * Where a candle set came from: `live` means it was fetched from OKX when this
@@ -30,10 +33,6 @@ export interface OkxCandleSet {
 	timestamp: number;
 }
 
-const OKX_PATH = "https://www.okx.com/api/v5/market/candles";
-const LIMIT = 300;
-const REQUEST_TIMEOUT_MS = 8_000;
-
 const BARS: Record<OkxBar, string> = {
 	"1D": "1D",
 	"4H": "4H",
@@ -41,47 +40,38 @@ const BARS: Record<OkxBar, string> = {
 };
 
 /**
- * Fetch candles and convert them into the shape `TChart` consumes.
- * 拉取 K 线并转换为 `TChart` 所需的数据形状。
+ * One bar size, live from OKX, mapped onto what `TChart` consumes.
+ * lightweight-charts takes whole-second `time`s where OKX answers in
+ * milliseconds, so the scaling lives here rather than inside the feed.
+ *
+ * 一个周期的实时 OKX 数据，映射到 `TChart` 消费的形状。lightweight-charts 用整秒
+ * `time`，而 OKX 以毫秒应答，所以换算放在这里、不放进数据源模块。
  */
 async function fetchCandles(bar: OkxBar): Promise<TChartDataItem[]> {
-	const url = `${OKX_PATH}?instId=${OKX_INST_ID}&bar=${BARS[bar]}&limit=${LIMIT}`;
-	const response = await fetch(url, {
-		signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-		headers: { Accept: "application/json" },
-	});
-	if (!response.ok) {
-		throw new Error(`OKX ${bar}: HTTP ${response.status}`);
-	}
+	return (await fetchOkxCandles(OKX_INST_ID, BARS[bar])).map(toChartDataItem);
+}
 
-	const payload = (await response.json()) as {
-		code: string;
-		msg?: string;
-		data?: string[][];
+function fromSnapshot(bar: OkxBar): OkxCandleSet {
+	return {
+		instId: OKX_INST_ID,
+		bar,
+		bars: okxSnapshotCandles(bar).map(toChartDataItem),
+		source: "snapshot",
+		timestamp: okxSnapshotTimestamp(),
 	};
-	if (payload.code !== "0" || !payload.data?.length) {
-		throw new Error(`OKX ${bar}: code ${payload.code} ${payload.msg ?? ""}`.trim());
-	}
+}
 
-	// OKX answers newest-first with millisecond timestamps; `TChart` wants
-	// ascending order and whole seconds.
-	// OKX 按时间倒序返回且使用毫秒；`TChart` 需要升序与整秒。
-	return payload.data
-		.map((row) => {
-			const [time, open, high, low, close, volume] = row;
-			const seconds = Math.trunc(Number(time) / 1000);
-			return {
-				time: seconds,
-				open: Number(open),
-				high: Number(high),
-				low: Number(low),
-				close: Number(close),
-				value: Number(close),
-				volume: Number(volume),
-			};
-		})
-		.filter((candle) => Number.isFinite(candle.time) && Number.isFinite(candle.close))
-		.sort((a, b) => a.time - b.time);
+/** The neutral millisecond Candle onto lightweight-charts' second-based item. 把毫秒级的中立 Candle 映射为 lightweight-charts 的秒级数据项。 */
+function toChartDataItem(candle: OkxCandle): TChartDataItem {
+	return {
+		time: Math.trunc(candle.timestamp / 1000),
+		open: candle.open,
+		high: candle.high,
+		low: candle.low,
+		close: candle.close,
+		value: candle.close,
+		volume: candle.volume,
+	};
 }
 
 /**
@@ -96,17 +86,6 @@ async function fetchCandles(bar: OkxBar): Promise<TChartDataItem[]> {
  * 同一组数据十几次。
  */
 const cache = new Map<OkxBar, Promise<OkxCandleSet>>();
-
-function fromSnapshot(bar: OkxBar): OkxCandleSet {
-	const generatedAt = Date.parse(snapshot.generatedAt) || Date.now();
-	return {
-		instId: OKX_INST_ID,
-		bar,
-		bars: (snapshot.bars as Record<string, TChartDataItem[]>)[bar] ?? [],
-		source: "snapshot",
-		timestamp: generatedAt,
-	};
-}
 
 /**
  * Load one bar size, live from OKX, falling back to the committed snapshot.

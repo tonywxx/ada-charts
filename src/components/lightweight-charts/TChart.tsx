@@ -18,6 +18,8 @@ import {
 	type Time,
 } from "lightweight-charts";
 import { memo, useEffect, useMemo, useRef } from "react";
+import { decideDataPatch } from "../../data-patch";
+import { useEngineMount } from "../../engine-mount";
 import {
 	buildChartOptions,
 	buildEmaSeriesOptions,
@@ -27,6 +29,7 @@ import {
 	calcEMA,
 	createMainSeries,
 	normalizeChartData,
+	sameChartDataItem,
 	toSeriesMarkers,
 	toVolumeData,
 	areTChartPropsEqual,
@@ -913,8 +916,6 @@ export interface TChartProps {
 	 */
 function TChart(props: TChartProps) {
 	const resolved = useMemo(() => resolveTChartProps(props), [props]);
-	const containerRef = useRef<HTMLDivElement>(null);
-	const chartRef = useRef<IChartApi | null>(null);
 	const seriesRef = useRef<ISeriesApi<SeriesType> | null>(null);
 	const volumeRef = useRef<ISeriesApi<"Histogram"> | null>(null);
 	const ema1Ref = useRef<ISeriesApi<"Line"> | null>(null);
@@ -946,50 +947,58 @@ function TChart(props: TChartProps) {
 
 	// Create the chart exactly once; every later change goes through applyOptions.
 	// 图表只创建一次，后续所有变更都走 applyOptions。
-	useEffect(() => {
-		const container = containerRef.current;
-		if (!container) return;
-
-		const chart = createChart(
-			container,
-			buildChartOptions(latestRef.current.resolved),
-		);
-		chartRef.current = chart;
-
-		const timeScale = chart.timeScale();
-		// Every handler dispatches through the ref, so a subscription made once at
-		// mount always sees the callback the caller passed most recently.
-		// 所有处理函数都经由该 ref 分发，因此挂载时建立的订阅始终能拿到调用方
-		// 最新传入的回调。
-		const emitRange = () =>
-			latestRef.current.props.onVisibleRangeChange?.(
-				timeScale.getVisibleRange(),
+	const subscriptionRef = useRef<(() => void) | null>(null);
+	const { setContainer, engine } = useEngineMount<IChartApi>({
+		create: (container) => {
+			const chart = createChart(
+				container,
+				buildChartOptions(latestRef.current.resolved),
 			);
-		const emitLogical = (range: LogicalRange | null) =>
-			latestRef.current.props.onVisibleLogicalRangeChange?.(range);
-		const emitSize = () => latestRef.current.props.onSizeChange?.();
-		const handleClick = (param: MouseEventParams) =>
-			latestRef.current.props.onClick?.(param);
-		const handleDblClick = (param: MouseEventParams) =>
-			latestRef.current.props.onDoubleClick?.(param);
-		const handleCrosshair = (param: MouseEventParams) =>
-			latestRef.current.props.onCrosshairMove?.(param);
 
-		chart.subscribeClick(handleClick);
-		chart.subscribeDblClick(handleDblClick);
-		chart.subscribeCrosshairMove(handleCrosshair);
-		timeScale.subscribeVisibleTimeRangeChange(emitRange);
-		timeScale.subscribeVisibleLogicalRangeChange(emitLogical);
-		timeScale.subscribeSizeChange(emitSize);
+			const timeScale = chart.timeScale();
+			// Every handler dispatches through the ref, so a subscription made once at
+			// mount always sees the callback the caller passed most recently.
+			// 所有处理函数都经由该 ref 分发，因此挂载时建立的订阅始终能拿到调用方
+			// 最新传入的回调。
+			const emitRange = () =>
+				latestRef.current.props.onVisibleRangeChange?.(
+					timeScale.getVisibleRange(),
+				);
+			const emitLogical = (range: LogicalRange | null) =>
+				latestRef.current.props.onVisibleLogicalRangeChange?.(range);
+			const emitSize = () => latestRef.current.props.onSizeChange?.();
+			const handleClick = (param: MouseEventParams) =>
+				latestRef.current.props.onClick?.(param);
+			const handleDblClick = (param: MouseEventParams) =>
+				latestRef.current.props.onDoubleClick?.(param);
+			const handleCrosshair = (param: MouseEventParams) =>
+				latestRef.current.props.onCrosshairMove?.(param);
 
-		return () => {
-			chart.unsubscribeClick(handleClick);
-			chart.unsubscribeDblClick(handleDblClick);
-			chart.unsubscribeCrosshairMove(handleCrosshair);
-			timeScale.unsubscribeVisibleTimeRangeChange(emitRange);
-			timeScale.unsubscribeVisibleLogicalRangeChange(emitLogical);
-			timeScale.unsubscribeSizeChange(emitSize);
-			if (fitTimerRef.current) clearTimeout(fitTimerRef.current);
+			chart.subscribeClick(handleClick);
+			chart.subscribeDblClick(handleDblClick);
+			chart.subscribeCrosshairMove(handleCrosshair);
+			timeScale.subscribeVisibleTimeRangeChange(emitRange);
+			timeScale.subscribeVisibleLogicalRangeChange(emitLogical);
+			timeScale.subscribeSizeChange(emitSize);
+
+			subscriptionRef.current = () => {
+				chart.unsubscribeClick(handleClick);
+				chart.unsubscribeDblClick(handleDblClick);
+				chart.unsubscribeCrosshairMove(handleCrosshair);
+				timeScale.unsubscribeVisibleTimeRangeChange(emitRange);
+				timeScale.unsubscribeVisibleLogicalRangeChange(emitLogical);
+				timeScale.unsubscribeSizeChange(emitSize);
+				if (fitTimerRef.current) clearTimeout(fitTimerRef.current);
+			};
+			return chart;
+		},
+		// No `resize`: lightweight-charts sizes the canvas itself through `autoSize`,
+		// and a second opinion here would contend with it.
+		// 不传 `resize`：canvas 尺寸由 lightweight-charts 的 `autoSize` 自己负责，
+		// 这里再多嘴只会跟它抢。
+		destroy: (chart) => {
+			subscriptionRef.current?.();
+			subscriptionRef.current = null;
 			markersRef.current = null;
 			watermarkRef.current = null;
 			seriesRef.current = null;
@@ -997,21 +1006,20 @@ function TChart(props: TChartProps) {
 			ema1Ref.current = null;
 			ema2Ref.current = null;
 			chart.remove();
-			chartRef.current = null;
-		};
-	}, []);
+		},
+	});
 
 	// Chart-level options.
 	// 图表级选项。
 	useEffect(() => {
-		chartRef.current?.applyOptions(buildChartOptions(resolved));
-	}, [resolved]);
+		engine()?.applyOptions(buildChartOptions(resolved));
+	}, [resolved, engine]);
 
 	// Series objects: rebuilt only when the kind of series or the set of
 	// overlays actually changes.
 	// 系列对象：仅在系列类型或叠加层组合真正变化时重建。
 	useEffect(() => {
-		const chart = chartRef.current;
+		const chart = engine();
 		if (!chart) return;
 
 		const { resolved: options } = latestRef.current;
@@ -1060,6 +1068,12 @@ function TChart(props: TChartProps) {
 		}
 
 		return () => {
+			// This effect is declared after the mount, so on unmount the chart is
+			// already gone and its series with it. Removing them again is the
+			// `Value is undefined` failure the story suite was hitting.
+			// 本 effect 声明在挂载之后，因此卸载时图表连同系列早已被拆除；
+			// 再去 remove 就是 story 套件里那批 `Value is undefined`。
+			if (engine() !== chart) return;
 			if (ema1) chart.removeSeries(ema1);
 			if (ema2) chart.removeSeries(ema2);
 			if (volume) chart.removeSeries(volume);
@@ -1079,6 +1093,7 @@ function TChart(props: TChartProps) {
 		resolved.volumeTopMargin,
 		resolved.emaPeriod1,
 		resolved.emaPeriod2,
+		engine,
 	]);
 	// Style and option changes are pushed through applyOptions after every
 	// render. The library diffs them internally, so this is a no-op when nothing
@@ -1088,7 +1103,7 @@ function TChart(props: TChartProps) {
 	// 无变化时即为空操作 —— 这也消除了六十多项依赖数组必然出现的
 	// “漏写某个 prop 到 deps” 一类缺陷。
 	useEffect(() => {
-		const chart = chartRef.current;
+		const chart = engine();
 		if (!chart) return;
 		chart.applyOptions(buildChartOptions(resolved));
 
@@ -1118,10 +1133,17 @@ function TChart(props: TChartProps) {
 	// `setData` 重新灌入。
 	useEffect(() => {
 		const series = seriesRef.current;
-		const data = dataRef.current;
-		const prev = prevDataRef.current;
+		const previous = prevDataRef.current;
 		prevDataRef.current = data;
 		if (!series) return;
+
+		const { resolved } = latestRef.current;
+		const patch = decideDataPatch(previous, data, sameChartDataItem);
+
+		// Equal content in a new array is not a change: this is what keeps a style
+		// tweak from replaying the whole series.
+		// 内容相等、只是数组换了，不算变化：正是这一点让改样式不会重播整个系列。
+		if (patch.kind === "none") return;
 
 		if (data.length === 0) {
 			series.setData([] as never);
@@ -1131,29 +1153,26 @@ function TChart(props: TChartProps) {
 			return;
 		}
 
-		// A single new bar is the streaming case: same first and last point as
-		// before, but one item longer.
-		// 流式追加场景：首尾点与上一轮一致，但多出一条数据。
-		const appendedOneBar =
-			data.length === prev.length + 1 &&
-			prev.length > 0 &&
-			data[0].time === prev[0].time &&
-			data[data.length - 2].time === prev[prev.length - 1].time;
-
-		if (appendedOneBar) {
-			const last = data[data.length - 1];
-			series.update(last as never);
-			if (volumeRef.current) volumeRef.current.update(toVolumeData(last, resolved));
-			const ema1 = ema1Ref.current;
-			const ema2 = ema2Ref.current;
-			if (ema1) {
-				const points = calcEMA(data, resolved.emaPeriod1);
-				if (points.length > 0) ema1.update(points[points.length - 1]);
+		if (patch.kind === "append" || patch.kind === "update") {
+			const touched = patch.kind === "append" ? patch.items : [patch.item];
+			for (const item of touched) {
+				series.update(item as never);
+				volumeRef.current?.update(toVolumeData(item, resolved));
 			}
-			if (ema2) {
-				const points = calcEMA(data, resolved.emaPeriod2);
-				if (points.length > 0) ema2.update(points[points.length - 1]);
-			}
+			// The EMA is recursive, so the newest `touched.length` points move with
+			// it. Recompute once over the whole set, then push just that tail.
+			// EMA 是递推的：末尾同样数量的点会一起变化。整体重算一次，只推尾段。
+			const pushEmaTail = (
+				ema: typeof ema1Ref.current,
+				period: number,
+			) => {
+				if (!ema) return;
+				for (const point of calcEMA(data, period).slice(-touched.length)) {
+					ema.update(point as never);
+				}
+			};
+			pushEmaTail(ema1Ref.current, resolved.emaPeriod1);
+			pushEmaTail(ema2Ref.current, resolved.emaPeriod2);
 		} else {
 			series.setData(data as never);
 			volumeRef.current?.setData(data.map((item) => toVolumeData(item, resolved)));
@@ -1168,10 +1187,10 @@ function TChart(props: TChartProps) {
 		if (fitTimerRef.current) clearTimeout(fitTimerRef.current);
 		fitTimerRef.current = setTimeout(() => {
 			fitTimerRef.current = null;
-			const chart = chartRef.current;
+			const chart = engine();
 			if (chart) fitToRange(chart, data.length, resolved.timeScaleRightOffset);
 		}, 200);
-	}, [resolved]);
+	}, [data, engine]);
 
 	// Reference lines, rebuilt whenever the dataset or their styling changes.
 	// 参考线：数据集或其样式变化时重建。
@@ -1218,6 +1237,12 @@ function TChart(props: TChartProps) {
 		const plugin = createSeriesMarkers(series, mapped);
 		markersRef.current = plugin;
 		return () => {
+			// The markers plugin belongs to this series: once the series is gone the
+			// plugin went with it, and detaching it again would reach into a removed
+			// series. The series, not the chart, is what this plugin is attached to.
+			// 标记插件挂在series上：series 被拆除时插件随之消失，再 detach 就是往已移除的
+			// series 里伸手。这里的存活判据是 series，不是 chart。
+			if (seriesRef.current !== series) return;
 			plugin.detach();
 			markersRef.current = null;
 		};
@@ -1228,7 +1253,7 @@ function TChart(props: TChartProps) {
 	// `lightweight-charts` v5 移除了内置的 `watermark` 图表选项，
 	// 因此水印改为以 pane primitive 的形式挂载。
 	useEffect(() => {
-		const chart = chartRef.current;
+		const chart = engine();
 		if (!chart) return;
 		const text = resolved.watermarkText.trim();
 		if (!resolved.watermarkVisible || text === "") return;
@@ -1249,6 +1274,7 @@ function TChart(props: TChartProps) {
 		});
 		watermarkRef.current = plugin;
 		return () => {
+			if (engine() !== chart) return;
 			plugin.detach();
 			watermarkRef.current = null;
 		};
@@ -1261,11 +1287,12 @@ function TChart(props: TChartProps) {
 		resolved.watermarkVertAlign,
 		resolved.watermarkFontStyle,
 		resolved.fontFamily,
+		engine,
 	]);
 
 	return (
 		<div
-			ref={containerRef}
+			ref={setContainer}
 			style={{
 				width: resolved.autoSize ? "100%" : resolved.width,
 				height: resolved.height,
@@ -1305,4 +1332,14 @@ function fitToRange(
 	});
 }
 
-export default memo(TChart, areTChartPropsEqual);
+const TChartMemo = memo(TChart, areTChartPropsEqual);
+
+/**
+ * The memoized Wrapper, under both export forms: `TChart` entry files
+ * default-export it so a consumer can pick either import style.
+ *
+ * 记忆化后的 Wrapper，两种导出形式都给：入口文件同时 default 导出，
+ * 调用方两种 import 写法都能用。
+ */
+export { TChartMemo as TChart };
+export default TChartMemo;

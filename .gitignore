@@ -23,3 +23,22 @@ storybook-static
 *.njsproj
 *.sln
 *.sw?
+consumer-check
+
+# dev-only built-package probe for #1
+consumer-probe.html
+consumer-probe.tsx
+
+# pnpm pack output
+*.tgz
+consumer-probe.html
+src/consumer-probe.tsx
+
+# probes for #1
+probe.html
+probe.vite.config.ts
+src/probe-app.tsx
+dist-probe/
+consumer-check/
+consumer-probe.html
+src/consumer-probe.tsx

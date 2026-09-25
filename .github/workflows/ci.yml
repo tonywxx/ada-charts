@@ -34,6 +34,29 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      # `pnpm test` is the node-environment project: fast, no browser, and the
+      # gate that has to pass.
+      # `pnpm test` 是 node 环境那个 project：快、不需要浏览器，也是必须通过的那道门。
+      - name: Test
+        run: pnpm test
+
+      # The story suite (42 stories across the three Wrappers, all mounted inside
+      # StrictMode) runs here but does not fail the build: one unhandled
+      # `Object is disposed` from inside lightweight-charts' deferred draw makes
+      # vitest exit non-zero whatever the tests do. See #8 — until that is
+      # resolved upstream, a blocking step here would only teach people to ignore
+      # a red CI that is not reporting a real regression.
+      # story 套件（三个 Wrapper 共 42 条，全部在 StrictMode 下挂载）在这里跑，但不拦构建：
+      # lightweight-charts 自己延迟重绘里那条未处理的 `Object is disposed` 会让 vitest
+      # 无论测试结果如何都以非零退出。见 #8 —— 上游修掉之前，把它设成阻塞步骤只会让人
+      # 习惯忽略一个并没有报告真实回归的红。
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: "Test stories (non-blocking until #8)"
+        continue-on-error: true
+        run: pnpm test:storybook
+
       # `tsc -b && vite build`
       - name: Type-check and build
         run: pnpm build

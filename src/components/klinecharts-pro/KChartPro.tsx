@@ -2,12 +2,15 @@ import "@klinecharts/pro/dist/klinecharts-pro.css";
 import { KLineChartPro, type Datafeed, type Period, type SymbolInfo } from "@klinecharts/pro";
 import type { DeepPartial, Styles } from "klinecharts";
 import { memo, useEffect, useMemo, useRef } from "react";
+import { dispose as disposeV9Chart } from "klinecharts-v9";
+import { useEngineMount } from "../../engine-mount";
+import { mergeStyles, themeStyles } from "../klinecharts/k-line-styles";
 import {
 	KCHARTPRO_DEFAULTS,
 	KCHARTPRO_DEFAULT_PERIODS,
-	OkxDatafeed,
 	areKChartProPropsEqual,
 } from "./k-chart-pro-options";
+import { OkxDatafeed } from "./okx-datafeed";
 
 /**
  * Everything `KChartPro` accepts. Each prop maps 1:1 onto a field of the
@@ -151,8 +154,6 @@ function resolveKChartProProps(props: KChartProProps): KChartProResolvedProps {
  */
 function KChartPro(props: KChartProProps) {
 	const resolved = useMemo(() => resolveKChartProProps(props), [props]);
-	const containerRef = useRef<HTMLDivElement>(null);
-	const chartRef = useRef<KLineChartPro | null>(null);
 	/** One shared OKX feed unless the caller supplies their own. 除非调用方自带，否则共用一个 OKX 数据源。 */
 	const defaultFeedRef = useRef<OkxDatafeed | null>(null);
 	const latestRef = useRef({ props, resolved });
@@ -168,76 +169,95 @@ function KChartPro(props: KChartProProps) {
 
 	// Build the Pro chart exactly once.
 	// Pro 图表只创建一次。
-	useEffect(() => {
-		const container = containerRef.current;
-		if (!container) return;
+	// Only needed because `KLineChartPro` publishes no teardown: the v9 host it
+	// stamps inside our container has to be found again at destroy time.
+	// 只是因为 `KLineChartPro` 不提供拆除接口才需要它：销毁时要找回它盖在我们容器里的
+	// v9 宿主元素。
+	const hostRef = useRef<HTMLDivElement | null>(null);
+	const { setContainer, engine } = useEngineMount<KLineChartPro>({
+		create: (container) => {
+			hostRef.current = container;
+			const options = latestRef.current.resolved;
+			let feed: OkxDatafeed | undefined;
+			if (!options.datafeed) {
+				feed = defaultFeedRef.current ?? (defaultFeedRef.current = new OkxDatafeed(options.symbol.ticker));
+			}
 
-		const options = latestRef.current.resolved;
-		let feed: OkxDatafeed | undefined;
-		if (!options.datafeed) {
-			feed = defaultFeedRef.current ?? (defaultFeedRef.current = new OkxDatafeed(options.symbol.ticker));
-		}
+			const datafeed: Datafeed = options.datafeed ?? feed!;
+			const period: Period = options.period ?? { multiplier: 1, timespan: "day", text: "1D" };
 
-		const datafeed: Datafeed = options.datafeed ?? feed!;
-		const period: Period = options.period ?? { multiplier: 1, timespan: "day", text: "1D" };
-
-		const chart = new KLineChartPro({
-			container,
-			symbol: options.symbol,
-			period,
-			periods: options.periods ?? KCHARTPRO_DEFAULT_PERIODS,
-			datafeed,
-			theme: options.theme,
-			locale: options.locale,
-			timezone: options.timezone,
-			drawingBarVisible: options.drawingBarVisible,
-			mainIndicators: options.mainIndicators,
-			subIndicators: options.subIndicators,
-			...(options.styles ? { styles: options.styles } : {}),
-			...(options.watermark ? { watermark: options.watermark } : {}),
-		});
-		chartRef.current = chart;
-		latestRef.current.props.onChartReady?.(chart);
-
-		return () => {
+			const chart = new KLineChartPro({
+				container,
+				symbol: options.symbol,
+				period,
+				periods: options.periods ?? KCHARTPRO_DEFAULT_PERIODS,
+				datafeed,
+				theme: options.theme,
+				locale: options.locale,
+				timezone: options.timezone,
+				drawingBarVisible: options.drawingBarVisible,
+				mainIndicators: options.mainIndicators,
+				subIndicators: options.subIndicators,
+				// The same Theme tokens `KChart` fans out, so a rising candle is the same
+				// green in both klinecharts-based Wrappers. Caller `styles` still win.
+				// 与 `KChart` 扇出的是同一批 Theme token，因此两个基于 klinecharts 的 Wrapper
+				// 里上涨蜡烛是同一个绿色。调用方传入的 `styles` 仍然优先。
+				styles: mergeStyles(themeStyles(options.theme), options.styles),
+				...(options.watermark ? { watermark: options.watermark } : {}),
+			});
+			latestRef.current.props.onChartReady?.(chart);
+			return chart;
+		},
+		// `KLineChartPro` exposes no `resize`, and its own v9 chart listens to window
+		// resize; a container-only resize is therefore not reachable from here. The
+		// gap is stated rather than papered over with a private-field poke.
+		// `KLineChartPro` 不提供 `resize`，其内部 v9 图表只监听 window resize，因此
+		// 仅容器尺寸变化这条路在这里无从触达。这里直说缺口，而不去戳私有字段。
+		destroy: () => {
 			defaultFeedRef.current?.dispose();
 			defaultFeedRef.current = null;
-			// `KLineChartPro` owns its chart's lifecycle and exposes no dispose; the
-			// v9 instance it wraps is reclaimed once its host DOM is removed.
-			// `KLineChartPro` 自行管理其图表生命周期且不提供 dispose；它包装的 v9 实例会在宿主
-			// DOM 被移除后随之回收。
-			container.innerHTML = "";
-			chartRef.current = null;
-		};
-	}, []);
+			// `KLineChartPro` owns its inner chart and publishes no teardown of its own
+			// (`_chartApi` is private). The v9 instance registers itself by stamping
+			// `k-line-chart-id` on its host element, and v9's `dispose` reads exactly
+			// that attribute — so the hosted chart can be taken down properly instead
+			// of being left running against DOM we are about to drop.
+			// `KLineChartPro` 独占其内部图表，且不提供拆除接口（`_chartApi` 是私有的）。
+			// v9 实例会在宿主元素上盖 `k-line-chart-id` 完成自注册，而 v9 的 `dispose`
+			// 正是读这个属性 —— 于是可以真正拆掉它，而不是留着一个对着将被丢弃的 DOM
+			// 继续运行的图表。
+			const v9Host = hostRef.current?.querySelector("[k-line-chart-id]");
+			if (v9Host instanceof HTMLElement) disposeV9Chart(v9Host);
+			hostRef.current = null;
+		},
+	});
 
 	// Mirror reactive style/locale/timezone/theme changes through the setters.
 	// 通过 setter 镜像响应式的样式 / 语言 / 时区 / 主题变化。
 	useEffect(() => {
-		const chart = chartRef.current;
+		const chart = engine();
 		if (!chart) return;
 		chart.setTheme(resolved.theme);
 		chart.setLocale(resolved.locale);
 		if (resolved.timezone) chart.setTimezone(resolved.timezone);
-		if (resolved.styles) chart.setStyles(resolved.styles);
-	}, [resolved.theme, resolved.locale, resolved.timezone, resolved.styles]);
+		chart.setStyles(mergeStyles(themeStyles(resolved.theme), resolved.styles));
+	}, [resolved.theme, resolved.locale, resolved.timezone, resolved.styles, engine]);
 
 	// Symbol / period swaps reload the feed; only fire when they actually change.
 	// 标的 / 周期切换会重载数据源；仅在真正变化时触发。
 	const symbolKey = JSON.stringify(resolved.symbol);
 	useEffect(() => {
-		if (chartRef.current) chartRef.current.setSymbol(latestRef.current.resolved.symbol);
-	}, [symbolKey]);
+		engine()?.setSymbol(latestRef.current.resolved.symbol);
+	}, [symbolKey, engine]);
 
 	const periodKey = JSON.stringify(resolved.period ?? null);
 	useEffect(() => {
 		const period = latestRef.current.resolved.period;
-		if (chartRef.current && period) chartRef.current.setPeriod(period);
-	}, [periodKey]);
+		if (period) engine()?.setPeriod(period);
+	}, [periodKey, engine]);
 
 	return (
 		<div
-			ref={containerRef}
+			ref={setContainer}
 			style={{
 				width: resolved.autoSize ? "100%" : resolved.width,
 				height: resolved.height,
@@ -247,4 +267,14 @@ function KChartPro(props: KChartProProps) {
 	);
 }
 
-export default memo(KChartPro, areKChartProPropsEqual);
+const KChartProMemo = memo(KChartPro, areKChartProPropsEqual);
+
+/**
+ * The memoized Wrapper, under both export forms: `KChartPro` entry files
+ * default-export it so a consumer can pick either import style.
+ *
+ * 记忆化后的 Wrapper，两种导出形式都给：入口文件同时 default 导出，
+ * 调用方两种 import 写法都能用。
+ */
+export { KChartProMemo as KChartPro };
+export default KChartProMemo;

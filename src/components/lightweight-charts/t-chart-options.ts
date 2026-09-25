@@ -25,9 +25,12 @@ import {
 	type Time,
 	type UTCTimestamp,
 } from "lightweight-charts";
-import { getDecimalLength } from "./number/getDecimalLength";
-import { getDecimalMinMove } from "./number/getDecimalMinMove";
-import { DOWN_COLOR, UP_COLOR } from "./trade-theme";
+import {
+	MAX_PRICE_DECIMALS,
+	type PricePrecision,
+	pricePrecisionOf,
+} from "../../price-precision";
+import { LIGHT_THEME, withAlpha } from "../../theme";
 import type {
 	TChartDataItem,
 	TChartMarker,
@@ -49,9 +52,9 @@ import type {
  */
 export const TCHART_DEFAULTS = {
 	backgroundColor: "#ffffff",
-	textColor: "#677489",
-	fontSize: 12,
-	fontFamily: "Arial, sans-serif",
+	textColor: LIGHT_THEME.axisText,
+	fontSize: LIGHT_THEME.fontSize,
+	fontFamily: LIGHT_THEME.fontFamily,
 	width: 800,
 	height: 400,
 	autoSize: true,
@@ -61,17 +64,17 @@ export const TCHART_DEFAULTS = {
 	panesEnableResize: true,
 
 	vertGridVisible: true,
-	vertGridColor: "rgba(197, 203, 206, 0.5)",
+	vertGridColor: LIGHT_THEME.gridLine,
 	vertGridStyle: 0,
 	horzGridVisible: true,
-	horzGridColor: "rgba(197, 203, 206, 0.5)",
+	horzGridColor: LIGHT_THEME.gridLine,
 	horzGridStyle: 0,
 
 	timeScaleVisible: true,
 	timeVisible: false,
 	timeSecondsVisible: false,
 	timeScaleBorderVisible: true,
-	timeScaleBorderColor: "#2B2B43",
+	timeScaleBorderColor: LIGHT_THEME.axisBorder,
 	timeScaleRightOffset: 6,
 	timeScaleFixLeftEdge: true,
 	timeScaleFixRightEdge: false,
@@ -90,7 +93,7 @@ export const TCHART_DEFAULTS = {
 	priceScalePosition: "right",
 	defaultPriceScaleId: "right",
 	priceScaleBorderVisible: true,
-	priceScaleBorderColor: "#2B2B43",
+	priceScaleBorderColor: LIGHT_THEME.axisBorder,
 	priceScaleInvert: false,
 	priceScaleAlignLabels: true,
 	priceScaleEntireTextOnly: false,
@@ -102,13 +105,13 @@ export const TCHART_DEFAULTS = {
 	priceScaleTickMarkDensity: 4,
 
 	crosshairMode: "normal",
-	crosshairVertColor: "#758696",
+	crosshairVertColor: LIGHT_THEME.crosshair,
 	crosshairVertWidth: 1,
 	crosshairVertStyle: 3,
 	crosshairVertVisible: true,
 	crosshairVertLabelVisible: true,
 	crosshairVertLabelBackgroundColor: "#4C525E",
-	crosshairHorzColor: "#758696",
+	crosshairHorzColor: LIGHT_THEME.crosshair,
 	crosshairHorzWidth: 1,
 	crosshairHorzStyle: 3,
 	crosshairHorzVisible: true,
@@ -139,13 +142,13 @@ export const TCHART_DEFAULTS = {
 	baseLineStyle: 0,
 	priceFormatType: "price",
 
-	upColor: "#26a69a",
-	downColor: "#ef5350",
+	upColor: LIGHT_THEME.trendUp,
+	downColor: LIGHT_THEME.trendDown,
 	borderVisible: false,
 	borderUpColor: "#4A4A4A",
 	borderDownColor: "#4A4A4A",
-	wickUpColor: "#26a69a",
-	wickDownColor: "#ef5350",
+	wickUpColor: LIGHT_THEME.trendUp,
+	wickDownColor: LIGHT_THEME.trendDown,
 	wickVisible: true,
 
 	lineColor: "#2962FF",
@@ -188,8 +191,8 @@ export const TCHART_DEFAULTS = {
 
 	showVolume: false,
 	showVolumeLabel: false,
-	volumeUpColor: UP_COLOR,
-	volumeDownColor: DOWN_COLOR,
+	volumeUpColor: LIGHT_THEME.trendUp,
+	volumeDownColor: LIGHT_THEME.trendDown,
 	volumePriceScaleId: "volume",
 	volumeTopMargin: 0.8,
 
@@ -307,6 +310,29 @@ export function normalizeChartData(
 		typeof a.time === "number" && typeof b.time === "number"
 			? a.time - b.time
 			: String(a.time).localeCompare(String(b.time)),
+	);
+}
+
+/**
+ * Field-by-field equality for two Data items, used to tell a real data change
+ * from a re-render. Every field the chart draws has to be here: omit one and a
+ * refreshed bar is mistaken for `none`.
+ *
+ * 两条数据项的逐字段相等判断，用来区分真实的数据变化与一次重渲染。图表会绘制的
+ * 每个字段都必须列入：漏一个，刷新过的一根就会被当成 `none`。
+ */
+export function sameChartDataItem(
+	a: TChartDataItem,
+	b: TChartDataItem,
+): boolean {
+	return (
+		a.time === b.time &&
+		a.open === b.open &&
+		a.high === b.high &&
+		a.low === b.low &&
+		a.close === b.close &&
+		a.value === b.value &&
+		a.volume === b.volume
 	);
 }
 
@@ -453,6 +479,14 @@ export interface TChartPriceFormat {
 }
 
 /**
+ * What a price is shown with when there is nothing to infer it from — no
+ * configuration and no usable first Data item.
+ *
+ * 当既没有配置、又没有可用于推断的首个数据项时的默认价格精度。
+ */
+const DEFAULT_PRICE_PRECISION: PricePrecision = { decimals: 2, minMove: 0.01 };
+
+/**
  * Works out the numeric format for the price axis.
  *
  * When neither `pricePrecision` nor `priceMinMove` is given, both are inferred
@@ -473,30 +507,28 @@ export function resolvePriceFormat(
 	}
 
 	const { pricePrecision, priceMinMove } = props;
-	if (pricePrecision !== undefined || priceMinMove !== undefined) {
-		const precision = Math.max(
-			0,
-			Math.min(20, pricePrecision ?? Math.max(0, getDecimalLength(priceMinMove ?? 0))),
-		);
+	const fromMinMove = pricePrecisionOf(priceMinMove ?? NaN);
+	const configured = pricePrecision ?? fromMinMove?.decimals;
+
+	if (configured !== undefined) {
+		const precision = Math.max(0, Math.min(MAX_PRICE_DECIMALS, configured));
 		return {
 			type: props.priceFormatType,
 			precision,
-			minMove: priceMinMove ?? 1 / 10 ** precision,
+			// An explicit minimum move is echoed rather than recomputed: a caller
+			// who says `0.000123` means that step, not `0.000001`.
+			// 显式的最小变动单位原样透传：调用方给 `0.000123` 就是步长 0.000123，
+			// 不是想让它被改成 `0.000001`。
+			minMove: fromMinMove?.minMove ?? 10 ** -precision,
 		};
 	}
 
 	const sample = data[0]?.close ?? data[0]?.value ?? data[0]?.open ?? NaN;
-	const inferred = getDecimalLength(sample);
-	const precision = inferred >= 0 ? Math.min(inferred, 20) : 2;
-	const minMove = getDecimalMinMove(sample);
-
+	const inferred = pricePrecisionOf(sample) ?? DEFAULT_PRICE_PRECISION;
 	return {
 		type: props.priceFormatType,
-		precision,
-		minMove:
-			Number.isFinite(minMove) && minMove > 0
-				? minMove
-				: 1 / 10 ** precision,
+		precision: inferred.decimals,
+		minMove: inferred.minMove,
 	};
 }
 
@@ -745,10 +777,10 @@ function buildSeriesStyleOptions(
 				...sharedLine,
 				topLineColor: props.upColor,
 				bottomLineColor: props.downColor,
-				topFillColor1: `${props.upColor}33`,
-				topFillColor2: `${props.upColor}11`,
-				bottomFillColor1: `${props.downColor}33`,
-				bottomFillColor2: `${props.downColor}11`,
+				topFillColor1: withAlpha(props.upColor, 0.2),
+				topFillColor2: withAlpha(props.upColor, 1 / 15),
+				bottomFillColor1: withAlpha(props.downColor, 0.2),
+				bottomFillColor2: withAlpha(props.downColor, 1 / 15),
 				relativeGradient: props.relativeGradient,
 				// An explicit `baselinePrice` wins; otherwise the line sits on the
 				// dataset mean so the two halves stay balanced.

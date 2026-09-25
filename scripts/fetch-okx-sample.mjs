@@ -2,14 +2,14 @@
  * Regenerate the real BTC candles the Storybook stories render.
  *
  * Fetches OKX public market data and writes it to
- * `src/components/lightweight-charts/__data__/btc-usdt.json`, which the stories
+ * `src/__data__/btc-usdt.json`, which the stories
  * import directly. Committing the snapshot keeps the docs site deterministic and
  * viewable offline, while `pnpm okx:sample` refreshes it to the latest market.
  *
  * 重新生成 Storybook 故事所使用的真实 BTC 行情。
  *
  * 从 OKX 公共行情接口拉取，写入
- * `src/components/lightweight-charts/__data__/btc-usdt.json`，由故事直接 import。
+ * `src/__data__/btc-usdt.json`，由故事直接 import。
  * 把快照提交进仓库可以让文档站保持确定、且离线也能浏览；
  * 执行 `pnpm okx:sample` 即可刷新到最新行情。
  *
@@ -26,7 +26,7 @@ const LIMIT = 300;
 
 const OUT_FILE = resolve(
 	dirname(fileURLToPath(import.meta.url)),
-	"../src/components/lightweight-charts/__data__/btc-usdt.json",
+	"../src/__data__/btc-usdt.json",
 );
 
 /** One row of an OHLCV candle, in the shape `TChart` consumes. */
