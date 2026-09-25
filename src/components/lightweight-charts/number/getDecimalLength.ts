@@ -2,6 +2,9 @@
  * Returns the number of decimal places of a number.
  * Handles floating-point precision and scientific notation.
  * @param num The number to inspect (integer -> 0, NaN/Infinity -> -1).
+ *
+ * 返回一个小数拥有多少位小数，可正确处理浮点精度与科学计数法。
+ * @param num 待检查的数字（整数返回 0，NaN/Infinity 返回 -1）。
  */
 export function getDecimalLength(num: number): number {
   // Non-number or infinity cases.

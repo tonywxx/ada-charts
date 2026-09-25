@@ -2,6 +2,10 @@
  * Returns the minimum move (precision unit) for a number.
  * Example: 1.12345 -> 0.00001, 123 -> 1, 1.23e-4 -> 0.000001.
  * @param num The input number (NaN/Infinity -> NaN).
+ *
+ * 返回一个数字的最小变动单位（精度步长）。
+ * 例如：1.12345 -> 0.00001，123 -> 1，1.23e-4 -> 0.000001。
+ * @param num 输入数字（NaN/Infinity 返回 NaN）。
  */
 export function getDecimalMinMove(num: number): number {
   // Non-number or infinity cases.
