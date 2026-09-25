@@ -13,6 +13,10 @@
     "build-storybook": "storybook build"
   },
   "dependencies": {
+    "@klinecharts/extension": "^0.1.0",
+    "@klinecharts/pro": "^0.1.1",
+    "klinecharts": "^10.0.3",
+    "klinecharts-v9": "npm:klinecharts@^9.8.10",
     "lightweight-charts": "^5.2.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"

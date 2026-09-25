@@ -8,6 +8,18 @@ importers:
 
   .:
     dependencies:
+      '@klinecharts/extension':
+        specifier: ^0.1.0
+        version: 0.1.0(klinecharts@10.0.3)
+      '@klinecharts/pro':
+        specifier: ^0.1.1
+        version: 0.1.1(klinecharts@10.0.3)
+      klinecharts:
+        specifier: ^10.0.3
+        version: 10.0.3
+      klinecharts-v9:
+        specifier: npm:klinecharts@^9.8.10
+        version: klinecharts@9.8.12
       lightweight-charts:
         specifier: ^5.2.1
         version: 5.2.1
@@ -348,6 +360,16 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
+
+  '@klinecharts/extension@0.1.0':
+    resolution: {integrity: sha512-erJtbq4MBpa1EGYgjR7TNZQ9Rh0RoNGRt4lHFQlCjNolETsA6Xx6+puj7Q7JLTT4rWS4SZJ/UXh2I/4+aRZsUQ==}
+    peerDependencies:
+      klinecharts: '>=10.0.0'
+
+  '@klinecharts/pro@0.1.1':
+    resolution: {integrity: sha512-ChKW0/ra183CFKevzWSn1HwrLY3YOpERA8wfso+MMTyTYKEKx8Sd7gFTr5Hfn6R4MVru7xSlUHsqjlq/WpXrVA==}
+    peerDependencies:
+      klinecharts: '>=9.0.0'
 
   '@mdx-js/react@3.1.1':
     resolution: {integrity: sha512-f++rKLQgUVYDAtECQ6fn/is15GkEH9+nZPM3MS0RcxVqoTfawHvDlSCH7JbMhAM6uJ32v3eXLvLmLvjGu7PTQw==}
@@ -1301,6 +1323,13 @@ packages:
   jsonc-parser@3.3.1:
     resolution: {integrity: sha512-HUgH65KyejrUFPvHFPbqOY0rsFip3Bo5wb4ngvdi1EpCYWUQDC5V+Y7mZws+DLkr4M//zQJoanu1SP+87Dv1oQ==}
 
+  klinecharts@10.0.3:
+    resolution: {integrity: sha512-phvf5CyS7oGE46nuC+nxQxl9D+8+5w8q3reExh0oNeMV1Jws4X0CMHNkOI9xlNA/XWctNS5whZ3PqIJi8YM2Tw==}
+
+  klinecharts@9.8.12:
+    resolution: {integrity: sha512-yKLWMliwwIsiQsAI8geNOkE8P6SFsvaa0leX2isgB4Y1SvM3tS6Y9pe7ZbKkiLtOE0P0W9W9wb0M2wH0xAPG7w==}
+    engines: {node: '>=0.10.0'}
+
   lightningcss-android-arm64@1.33.0:
     resolution: {integrity: sha512-gEpRTalKdosp4Bb8qWtc2iOgE5SeIHlpS1up9bFq2wAyYhl1UdTObYiHe98zEM9SQvSoqQZ1IQD0JNpg3Ml5pg==}
     engines: {node: '>= 12.0.0'}
@@ -1377,6 +1406,9 @@ packages:
 
   lightweight-charts@5.2.1:
     resolution: {integrity: sha512-IVwoK1RLFiLPubaKIjNbtjWLnpPMqiABSrTay6whmNa8L1+19292VtHJ+BWyPUuLCwF0tcQlhEWd1CLB2a1nsQ==}
+
+  lodash@4.18.1:
+    resolution: {integrity: sha512-dMInicTPVE8d1e5otfwmmjlxkZoUpiVLwyeTdUsi/Caj/gfzzblBcCE5sRHV/AsjuCmxWrte2TNGSYuCeCq+0Q==}
 
   loupe@3.2.1:
     resolution: {integrity: sha512-CdzqowRJCeLU72bHvWqwRBBlLcMEtIvGrlvef74kMnV2AolS9Y8xUv1I0U/MNAWMhBlKIoyuEgoJ0t/bbwHbLQ==}
@@ -1555,12 +1587,25 @@ packages:
     engines: {node: '>=10'}
     hasBin: true
 
+  seroval-plugins@1.5.6:
+    resolution: {integrity: sha512-HXuLAX2pu/UByPpaeo/TaMfvMIi+1QqIoPJYCcAtU8QkVNwgR6MPlGuCQTErV1JwraaMbYaWVIBX7mppzGLATQ==}
+    engines: {node: '>=10'}
+    peerDependencies:
+      seroval: ^1.0
+
+  seroval@1.5.6:
+    resolution: {integrity: sha512-rVQVWjjSvlINzaQPZH5JFqsqEsIWdTxY3iJZCnTL/5gQbXIRooVZKI60tVCkOVfzcRPejboxO2t0P89dg5mQaA==}
+    engines: {node: '>=10'}
+
   siginfo@2.0.0:
     resolution: {integrity: sha512-ybx0WO1/8bSBLEWXZvEd7gMW3Sn3JFlW3TvX1nREbDLRNQNaeNN8WK0meBwPdAaOI7TtRRRJn/Es1zhrrCHu7g==}
 
   sirv@3.0.2:
     resolution: {integrity: sha512-2wcC/oGxHis/BoHkkPwldgiPSYcpZK3JU28WoMVv55yHJgcZ8rlXvuG9iZggz+sU1d4bRgIGASwyWqjxu3FM0g==}
     engines: {node: '>=18'}
+
+  solid-js@1.9.15:
+    resolution: {integrity: sha512-EeiY2xfpZJqPLjXspVEKjAII4yv8NyG//NxZ3IpOFHdUNnnTyL0uJOeS9LWGvA7cFCz5y94cjFwYlmw5Luncsg==}
 
   source-map-js@1.2.1:
     resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
@@ -2029,6 +2074,16 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.6.0
+
+  '@klinecharts/extension@0.1.0(klinecharts@10.0.3)':
+    dependencies:
+      klinecharts: 10.0.3
+
+  '@klinecharts/pro@0.1.1(klinecharts@10.0.3)':
+    dependencies:
+      klinecharts: 10.0.3
+      lodash: 4.18.1
+      solid-js: 1.9.15
 
   '@mdx-js/react@3.1.1(@types/react@19.3.0)(react@19.3.0)':
     dependencies:
@@ -2760,6 +2815,10 @@ snapshots:
 
   jsonc-parser@3.3.1: {}
 
+  klinecharts@10.0.3: {}
+
+  klinecharts@9.8.12: {}
+
   lightningcss-android-arm64@1.33.0:
     optional: true
 
@@ -2812,6 +2871,8 @@ snapshots:
   lightweight-charts@5.2.1:
     dependencies:
       fancy-canvas: 2.1.0
+
+  lodash@4.18.1: {}
 
   loupe@3.2.1: {}
 
@@ -3041,6 +3102,12 @@ snapshots:
 
   semver@7.8.5: {}
 
+  seroval-plugins@1.5.6(seroval@1.5.6):
+    dependencies:
+      seroval: 1.5.6
+
+  seroval@1.5.6: {}
+
   siginfo@2.0.0: {}
 
   sirv@3.0.2:
@@ -3048,6 +3115,12 @@ snapshots:
       '@polka/url': 1.0.0-next.29
       mrmime: 2.0.1
       totalist: 3.0.1
+
+  solid-js@1.9.15:
+    dependencies:
+      csstype: 3.2.3
+      seroval: 1.5.6
+      seroval-plugins: 1.5.6(seroval@1.5.6)
 
   source-map-js@1.2.1: {}
 
