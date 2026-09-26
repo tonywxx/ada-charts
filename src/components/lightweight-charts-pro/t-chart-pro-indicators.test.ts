@@ -5,11 +5,14 @@ import { TCHARTPRO_INDICATORS } from "./t-chart-pro-options";
 import {
 	bollinger,
 	buildIndicatorTracks,
+	createIndicatorLayer,
 	ema,
 	isKnownIndicator,
 	macd,
 	rsi,
 	sma,
+	type IndicatorLayer,
+	type IndicatorPlan,
 } from "./t-chart-pro-indicators";
 
 /**
@@ -258,5 +261,174 @@ describe("the studies transcribed from the engine", () => {
 		for (const bar of bars) {
 			expect(bar.color).toBe(LIGHT_THEME.noChange);
 		}
+	});
+});
+
+/**
+ * The live layer has to print exactly what the one-shot build prints — either way
+ * it is the same chart — but reach it one candle at a time. These tests stream the
+ * two shapes a real feed produces (a newest candle that keeps being rewritten, and
+ * the next one appended past it) over every study in the catalogue, then compare
+ * the result against the one-shot path.
+ *
+ * 实时层打印出的必须与一次性构建完全相同 —— 两边本就是同一张图 —— 只是逐根抵达。下面的
+ * 测试把数据源的两种真实形态（不断被改写的最新一根，以及在它之后追加的下一根）在目录里
+ * 每个指标上流一遍，再与一次性路径比对。
+ */
+describe("createIndicatorLayer", () => {
+	/** Every study in the catalogue on the price pane, plus two of them again in panes of their own. 目录里每个指标都放在价格主图，另有两个各占一个副面板。 */
+	const names = [...TCHARTPRO_INDICATORS];
+	const subs = ["VOL", "MACD"];
+
+	/**
+	 * A dataset whose bars sit on a real time grid, so a stream can both rewrite
+	 * the newest bar and append one after it. `from` is the index the first bar
+	 * counts from, which keeps an appended slice on the same grid.
+	 *
+	 * 一帧落在真实时间网格上的数据集，因此数据流既能改写最新一根、也能在它之后追加。`from`
+	 * 是首根的起始序号，使追加的切片与网格对齐。
+	 */
+	const barsFrom = (values: readonly number[], from: number): TChartDataItem[] =>
+		values.map((value, index) => ({
+			time: 1_700_000_000 + (from + index) * 86_400,
+			open: value,
+			high: value + 1,
+			low: value - 1,
+			close: value,
+			volume: value * 10,
+		}));
+
+	/** Rewrite the newest bar in place, the way a feed's own candle keeps ticking. 就地改写最新一根 —— 数据源自己那根 K 线持续跳动的方式。 */
+	const tick = (data: TChartDataItem[], close: number): TChartDataItem[] => {
+		const last = data[data.length - 1];
+		return [...data.slice(0, -1), { ...last, close, high: close + 1, low: close - 1 }];
+	};
+
+	/** A layer holding every study in the catalogue, already brought up to `data`. 持有目录里每个指标、且已跟到 `data` 的指标层。 */
+	const layerOver = (data: readonly TChartDataItem[], extra: string[] = []): IndicatorLayer => {
+		const layer = createIndicatorLayer(names, extra, LIGHT_THEME);
+		layer.advance(data);
+		return layer;
+	};
+
+	/** The pushes of a tail plan, proving the layer followed rather than rebuilt. 尾部计划的推送；顺带证明指标层是跟随而非重建。 */
+	const pushesOf = (plan: IndicatorPlan) => {
+		if (plan.kind !== "tail") throw new Error("the layer rebuilt instead of following");
+		return plan.pushes;
+	};
+
+	it("prints what the one-shot build prints after a stream of rewrites and appends", () => {
+		let data = barsFrom(wave.slice(0, 5), 0);
+		const layer = layerOver(data, subs);
+		const tracks = layer.tracks;
+		const titles = tracks.map((track) => track.title);
+		expect(titles.length).toBeGreaterThan(0);
+
+		for (let i = 5; i < wave.length; i += 1) {
+			// A feed's own candle ticks twice, both ways, before the next one opens.
+			// 数据源自己那根 K 线在新的一根开出前上下跳动两次。
+			data = tick(data, wave[i - 1] + 0.5);
+			expect(pushesOf(layer.advance(data))).toHaveLength(titles.length);
+			data = tick(data, wave[i - 1] - 0.5);
+			layer.advance(data);
+			// Then the next candle closes and is appended past it.
+			// 随后下一根收盘，被追加到它之后。
+			data = [...data, ...barsFrom(wave.slice(i, i + 1), i)];
+			expect(pushesOf(layer.advance(data))).toHaveLength(titles.length);
+		}
+
+		// The series are keyed off these arrays, so they must not be swapped out
+		// mid-stream — only their points may change.
+		// 系列以这些数组为键，因此不能在流中途被换掉 —— 只能改其中的点。
+		expect(layer.tracks).toBe(tracks);
+		expect(layer.tracks.map((track) => track.title)).toEqual(titles);
+		expect(layer.tracks).toEqual(buildIndicatorTracks(names, subs, data, LIGHT_THEME));
+	});
+
+	it("follows a batch that carries more than one new bar", () => {
+		// A render that outlasts a frame swallows the candles arriving while it runs,
+		// so React hands the layer a dataset that grew by two or three at once
+		// instead of by one. Every one of those bars is a bar of its own and needs
+		// its own point on every series.
+		//
+		// 超出单帧时长的渲染会吞掉它运行期间抵达的 K 线，于是 React 一次交给指标层的数据集
+		// 多了两三根而非一根。其中每一根都是独立的一根，都要在每条系列上各得一个点。
+		let data = barsFrom(wave.slice(0, 5), 0);
+		const layer = layerOver(data, subs);
+		let next = 5;
+
+		for (let round = 0; round < 12; round += 1) {
+			const batch = (round % 3) + 1;
+			// The newest bar keeps ticking, then `batch` more candles close past it.
+			// 最新一根持续跳动，随后又有 `batch` 根在它之后收盘。
+			data = tick(data, wave[next - 1] + 0.5);
+			// The rewritten bar is one bar, so one point per series.
+			// 被改写的那一根就是一根，因此每条系列一个点。
+			expect(pushesOf(layer.advance(data))).toHaveLength(layer.tracks.length);
+			data = [...data, ...barsFrom(wave.slice(next, next + batch), next)];
+			next += batch;
+
+			const pushes = pushesOf(layer.advance(data));
+			// Every appended bar is a bar of its own, one point per series each.
+			// 追加的每一根都是独立的一根，每根在每条系列上一个点。
+			expect(pushes).toHaveLength(layer.tracks.length * batch);
+			expect(layer.tracks).toEqual(buildIndicatorTracks(names, subs, data, LIGHT_THEME));
+		}
+	});
+
+	it("rebuilds when a different dataset arrives on the same time grid", () => {
+		// Same length, same times, doubled prices: comparing lengths and bounds
+		// alone would be fooled here, which is why the layer compares by identity.
+		// 同样的长度、同样的时间、翻倍的价格：只比长度与边界会被骗过，所以指标层改用同一性比较。
+		const values = wave.slice(0, 40);
+		const layer = layerOver(barsFrom(values, 0));
+		const replaced = barsFrom(values.map((value) => value * 2), 0);
+		expect(layer.advance(replaced).kind).toBe("reset");
+		expect(layer.tracks).toEqual(buildIndicatorTracks(names, [], replaced, LIGHT_THEME));
+	});
+
+	it("rebuilds when the dataset loses its newest bars", () => {
+		const data = barsFrom(wave.slice(0, 40), 0);
+		const layer = layerOver(data);
+		const shorter = data.slice(0, 30);
+		expect(layer.advance(shorter).kind).toBe("reset");
+		expect(layer.tracks).toEqual(buildIndicatorTracks(names, [], shorter, LIGHT_THEME));
+	});
+
+	it("starts empty and rebuilds on the first candle", () => {
+		// A chart whose feed starts empty mounts with no data at all, and its first
+		// candle arrives as a whole dataset. There is nothing to follow from.
+		// 数据源自空启动的图表挂载时没有任何数据，它的第一根 K 线是整份数据集抵达的，无从跟起。
+		const layer = createIndicatorLayer(names, subs, LIGHT_THEME);
+		expect(layer.tracks).toEqual([]);
+		const data = barsFrom(wave.slice(0, 5), 0);
+		expect(layer.advance(data).kind).toBe("reset");
+		expect(layer.tracks).toEqual(buildIndicatorTracks(names, subs, data, LIGHT_THEME));
+	});
+
+	it("answers the same plan twice for the same dataset", () => {
+		// React asks once while rendering and once from the effect; the second call
+		// must not do the work again.
+		// React 在渲染时问一次、在 effect 里再问一次；第二次不应重做一遍。
+		const data = barsFrom(wave.slice(0, 20), 0);
+		const layer = layerOver(data);
+		const first = layer.advance(data);
+		expect(layer.advance(data)).toBe(first);
+	});
+
+	it("flags a series whose only point is the newest one", () => {
+		// A chart that starts on a single bar has one point per series and no
+		// earlier data for `update` to build on, so the plan has to say so.
+		// 从单根 K 线起步的图表每条系列只有一个点，没有更早的数据可供 `update` 依托，计划必须说明。
+		const data = barsFrom([100], 0);
+		const layer = layerOver(data);
+		const pushes = pushesOf(layer.advance(tick(data, 101)));
+		for (const [index, push] of pushes.entries()) {
+			const track = layer.tracks[index];
+			const points = track.perBarColors ?? track.data;
+			expect(push.whole, track.title).toBe(push.point !== null && points.length === 1);
+		}
+		expect(pushes.some((push) => push.whole)).toBe(true);
+		expect(layer.tracks).toEqual(buildIndicatorTracks(names, [], tick(data, 101), LIGHT_THEME));
 	});
 });

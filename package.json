@@ -12,6 +12,7 @@
 		"test:storybook": "vitest run --project storybook",
 		"test:watch": "vitest",
 		"preview": "vite preview",
+		"perf": "node scripts/bench-charts.mjs",
 		"okx:sample": "node scripts/fetch-okx-sample.mjs",
 		"storybook": "storybook dev -p 6006",
 		"build-storybook": "storybook build"

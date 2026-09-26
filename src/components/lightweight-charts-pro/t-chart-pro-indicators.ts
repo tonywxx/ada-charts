@@ -102,7 +102,12 @@ function timeOf(item: TChartDataItem): Time {
  * 一根没有价格的 K 线。
  */
 function usableItems(data: readonly TChartDataItem[]): TChartDataItem[] {
-	return data.filter((item) => Number.isFinite(priceOf(item)));
+	return data.filter(isUsable);
+}
+
+/** Whether a data item carries a price a study can read. 数据项是否带着指标读得出来的价格。 */
+function isUsable(item: TChartDataItem): boolean {
+	return Number.isFinite(priceOf(item));
 }
 
 /**
@@ -1019,6 +1024,85 @@ function barColor(
 	}
 }
 
+/** The points a track holds: a line keeps them in `data`, a histogram in `perBarColors`. 一条轨迹持有的点：折线在 `data`，柱状在 `perBarColors`。 */
+function pointsOf(track: IndicatorTrack): IndicatorPoint[] {
+	return (track.perBarColors ?? track.data) as IndicatorPoint[];
+}
+
+/** One plotted point: a line's value, or a histogram bar carrying its own colour. 一个绘制点：折线的取值，或带自身颜色的柱子。 */
+export interface IndicatorPoint {
+	time: Time;
+	value: number;
+	color?: string;
+}
+
+/** The point a figure reports at `index`, or the shape of it — one place, so every path plots the same objects. 某条 figure 在 `index` 处的点；只有这一处决定它的形状，因此每条路径画出的都是同样的对象。 */
+function pointFor(
+	figure: IndicatorFigure,
+	value: number,
+	index: number,
+	time: Time,
+	bars: readonly IndicatorBar[],
+	theme: ChartTheme,
+): IndicatorPoint {
+	if (figure.kind === "line") return { time, value };
+	return {
+		time,
+		value,
+		color: barColor(
+			theme,
+			figure.barColouring,
+			bars[index],
+			figure.values[index - 1] ?? null,
+			value,
+		),
+	};
+}
+
+/** A track carrying a figure's identity and no points yet. 一条带着 figure 身份、尚无点位的轨迹。 */
+function emptyTrack(
+	figure: IndicatorFigure,
+	paneIndex: number,
+	figureIndex: number,
+	theme: ChartTheme,
+): IndicatorTrack {
+	const track: IndicatorTrack = {
+		title: figure.title,
+		paneIndex,
+		kind: figure.kind,
+		color: figure.kind === "line" ? paletteColor(theme, figureIndex) : theme.trendUp,
+		lineWidth: 1,
+		data: [],
+	};
+	if (figure.kind === "histogram") track.perBarColors = [];
+	return track;
+}
+
+/**
+ * Rewrite a track's points from a figure — the single place a figure becomes
+ * plotted points. The one-shot build and the incremental layer both go through
+ * here, so the two cannot drift into plotting different objects for the same
+ * values.
+ *
+ * 用一条 figure 重写一条轨迹的点位 —— figure 变成绘制点只此一处。一次性构建与增量层都走
+ * 这里，因此两者不会对同样的取值画出不同的对象。
+ */
+function fillTrack(
+	track: IndicatorTrack,
+	figure: IndicatorFigure,
+	bars: readonly IndicatorBar[],
+	times: readonly Time[],
+	theme: ChartTheme,
+): void {
+	const points = pointsOf(track);
+	points.length = 0;
+	for (let i = 0; i < figure.values.length; i += 1) {
+		const value = figure.values[i];
+		if (value === null) continue;
+		points.push(pointFor(figure, value, i, times[i], bars, theme));
+	}
+}
+
 /** Turn one study's figures into tracks all sitting on `paneIndex`. 把某个指标的各 figure 转成全部落在 `paneIndex` 上的轨迹。 */
 function tracksOf(
 	name: TChartProIndicator,
@@ -1028,41 +1112,9 @@ function tracksOf(
 	theme: ChartTheme,
 ): IndicatorTrack[] {
 	return STUDIES[name](bars).map((figure, index) => {
-		const points = figure.values;
-		if (figure.kind === "line") {
-			return {
-				title: figure.title,
-				paneIndex,
-				kind: "line" as const,
-				color: paletteColor(theme, index),
-				lineWidth: 1 as const,
-				data: points
-					.map((value, i) =>
-						value === null ? null : { time: times[i], value },
-					)
-					.filter(
-						(point): point is { time: Time; value: number } => point !== null,
-					),
-			};
-		}
-		const colored: { time: Time; value: number; color: string }[] = [];
-		points.forEach((value, i) => {
-			if (value === null) return;
-			colored.push({
-				time: times[i],
-				value,
-				color: barColor(theme, figure.barColouring, bars[i], points[i - 1] ?? null, value),
-			});
-		});
-		return {
-			title: figure.title,
-			paneIndex,
-			kind: "histogram" as const,
-			color: theme.trendUp,
-			lineWidth: 1 as const,
-			data: [],
-			perBarColors: colored,
-		};
+		const track = emptyTrack(figure, paneIndex, index, theme);
+		fillTrack(track, figure, bars, times, theme);
+		return track;
 	});
 }
 
@@ -1103,4 +1155,342 @@ export function buildIndicatorTracks(
 	}
 
 	return tracks;
+}
+
+// --------------------------------------------------------------- the live path
+
+/** What one series should be told after a single streamed candle. 一根实时 K 线之后应当告诉一条系列什么。 */
+export interface IndicatorPush {
+	/** The point to hand the series, or `null` when this track gained nothing. 要交给系列的点；该轨迹本根没有新增时为 `null`。 */
+	point: IndicatorPoint | null;
+	/**
+	 * `true` when the track now holds this point and nothing else, so there is no
+	 * earlier data for `update` to build on and the series needs `setData`.
+	 * 该轨迹当前只有这一个点时为 `true`：没有更早的数据可供 `update` 依托，系列需要 `setData`。
+	 */
+	whole: boolean;
+}
+
+/** How the series catch up after one streamed candle. 一根实时 K 线之后，系列如何跟上。 */
+export type IndicatorPlan =
+	/** Hand every track over wholesale — the layer rebuilt. 整体交付 —— 指标层重建过。 */
+	| { kind: "reset" }
+	/** One push per track, in track order. 每条轨迹一项推送，按轨迹顺序。 */
+	| { kind: "tail"; pushes: IndicatorPush[] };
+
+/**
+ * The indicator layer in its live form. A chart that streams candles draws the
+ * same tracks `buildIndicatorTracks` prints, but reaches them one candle at a
+ * time: it keeps the mapped dataset, the tracks and each study's newest value,
+ * and a new candle writes one point per series instead of rebuilding every point
+ * of every study.
+ *
+ * 实时形态的指标层。推送 K 线的图表画出的轨迹与 {@link buildIndicatorTracks} 打印的完全
+ * 相同，只是逐根抵达：它持有映射后的数据集、轨迹与各指标的最新取值，来一根新 K 线时只为
+ * 每条系列写一个点，而不是把每个指标的每个点重造一遍。
+ *
+ * What that removes is the part that was really O(N) per candle. Measured at
+ * 30 000 bars with six indicators, a full build costs ~48 ms, of which only
+ * ~13 ms is the studies' arithmetic: the other ~30 ms is turning 660k values into
+ * 660k point objects, and the engine was then handed all of them again.
+ *
+ * 它去掉的正是真正构成「每根 O(N)」的那一部分。在 30000 根、六个指标的实测中，整算一次
+ * 约 48 ms，其中只有约 13 ms 是指标本身的算术：另外约 30 ms 是把 66 万个取值变成 66 万个
+ * 点对象，而这 66 万个点随后又被整体交回引擎一遍。
+ *
+ * The 27 studies still run over the whole dataset for the newest bar, because
+ * every one of them is a causal filter — the value at the newest bar is a
+ * function of the bars before it — and the recursive ones (`EMA`, `RSI`, `DMI`,
+ * `SAR`) carry state that cannot be recovered from their own output arrays.
+ *
+ * 27 个指标仍会为最新一根在整份数据上跑一遍：它们都是因果滤波器 —— 最新一根的取值是此前
+ * 各根的函数 —— 而其中的递推型（`EMA`、`RSI`、`DMI`、`SAR`）带着无法从自身输出还原的状态。
+ */
+export interface IndicatorLayer {
+	/** The tracks, written through in place by every `advance`. 轨迹；每次 `advance` 就地写入。 */
+	readonly tracks: IndicatorTrack[];
+	/**
+	 * Follow `data` from wherever the layer already got to. Idempotent for a given
+	 * dataset: asked twice about the same reference, it answers the same plan.
+	 *
+	 * 从指标层当前所处的位置跟到 `data`。对同一份数据集是幂等的：同一个引用问两次，回答的
+	 * 是同一份计划。
+	 */
+	advance(data: readonly TChartDataItem[]): IndicatorPlan;
+}
+
+/** One track of one study, plus where it sits in the layer. 某个指标的一条轨迹，以及它在层里的位置。 */
+interface IndicatorSlot {
+	name: TChartProIndicator;
+	/** Which figure of the study this track draws. 这条轨迹画的是该指标的第几条 figure。 */
+	figureIndex: number;
+	track: IndicatorTrack;
+	/**
+	 * How many points the newest usable bar put into this track — `0` or `1`. The
+	 * newest bar's point is always a track's last element, so replacing a bar is a
+	 * `pop` and appending one is a `push`.
+	 * 最新一根可用 K 线为该轨迹放入的点数，`0` 或 `1`。最新一根的点永远是轨迹的最后一个
+	 * 元素，因此覆盖一根是 `pop`，追加一根是 `push`。
+	 */
+	tail: 0 | 1;
+}
+
+/** No bars at all — enough to read a study's figure titles and kinds off it. 一根 K 线都没有 —— 足以读出某条指标的 figure 名称与类型。 */
+const NO_BARS: readonly IndicatorBar[] = [];
+
+/**
+ * Build an empty live layer; every dataset arrives through `advance`.
+ * 建立一个空的实时指标层；每一份数据集都经由 `advance` 抵达。
+ *
+ * The indicator set and the theme are fixed for the layer's lifetime: changing
+ * either one builds a new layer, which is why the tracks it hands out keep their
+ * identity while candles stream in, and why a chart only has to rebuild its
+ * series when the set itself changes.
+ *
+ * 指标集合与主题在指标层的一生中是固定的：改动其一即建立新的一层。因此随着 K 线流入，
+ * 它交出的轨迹保持同一性；图表也只在集合本身变化时才需要重建系列。
+ */
+export function createIndicatorLayer(
+	mainIndicators: readonly string[],
+	subIndicators: readonly string[],
+	theme: ChartTheme,
+): IndicatorLayer {
+	const slots: IndicatorSlot[] = [];
+	const addStudy = (name: TChartProIndicator, paneIndex: number): void => {
+		// A study's shape — how many figures, their titles, kinds and colours — does
+		// not depend on the bars, so an empty dataset is enough to lay the tracks out.
+		// 一条指标的形状（几条 figure、各自名称、类型与颜色）与 K 线无关，因此空数据集就够
+		// 铺好轨迹了。
+		STUDIES[name](NO_BARS).forEach((figure, figureIndex) => {
+			slots.push({
+				name,
+				figureIndex,
+				track: emptyTrack(figure, paneIndex, figureIndex, theme),
+				tail: 0,
+			});
+		});
+	};
+
+	for (const name of mainIndicators) {
+		if (isKnownIndicator(name)) addStudy(name, 0);
+	}
+	let paneIndex = 1;
+	for (const name of subIndicators) {
+		if (!isKnownIndicator(name)) continue;
+		addStudy(name, paneIndex);
+		paneIndex += 1;
+	}
+
+	const tracks: IndicatorTrack[] = [];
+	let held: readonly TChartDataItem[] | null = null;
+	/** The dataset as the studies read it. 指标眼中的数据集。 */
+	let bars: IndicatorBar[] = [];
+	let times: Time[] = [];
+	/**
+	 * How many usable items sit in the held dataset's prefix (everything but its
+	 * own last item), and whether that last item itself was usable. Together they
+	 * say what the prefix maps to, without re-mapping it.
+	 * 已持有数据集中，前缀（除自身末项以外的全部）里可用项的个数，以及其末项本身是否可用。
+	 * 两者合起来说明了前缀映射成了什么，无需重新映射。
+	 */
+	let prefixUsable = 0;
+	let tailUsable = false;
+	let plan: IndicatorPlan = { kind: "reset" };
+
+	/**
+	 * Study results for one pass over `bars`, computed once per name even when
+	 * both lists ask for the same indicator. `buildIndicatorTracks` runs such a
+	 * study twice in that case and so draws it twice; the arithmetic is the same
+	 * both times, so sharing it changes the picture not at all.
+	 *
+	 * 一趟 `bars` 之上的指标结果，同一个名字只算一次 —— 即使两个清单都点了它。
+	 * `buildIndicatorTracks` 在这种情况下会把同一条指标算两遍，于是画两遍；两遍的算术完全
+	 * 相同，因此共用它不会改变画面。
+	 */
+	const studies = new Map<TChartProIndicator, IndicatorFigure[]>();
+	const studyFor = (
+		name: TChartProIndicator,
+		over: readonly IndicatorBar[],
+	): IndicatorFigure[] => {
+		let figures = studies.get(name);
+		if (!figures) {
+			figures = STUDIES[name](over);
+			studies.set(name, figures);
+		}
+		return figures;
+	};
+	/** Every pass reads the whole dataset for its own newest bar, so it starts on an empty map. 每一趟都为自己的最新一根读整份数据，因此从空表开始。 */
+	const pass = <T>(work: () => T): T => {
+		studies.clear();
+		return work();
+	};
+
+	/** Rebuild from scratch — a new dataset, or one this layer cannot follow. 从零重建 —— 新数据集，或本层跟不下去的一份。 */
+	const rebuild = (next: readonly TChartDataItem[]): void => {
+		const usable = usableItems(next);
+		bars = usable.map(toBar);
+		times = usable.map(timeOf);
+		tracks.length = 0;
+		for (const slot of slots) slot.tail = 0;
+		plan = { kind: "reset" };
+		tailUsable = tailUsableOf(next);
+		if (bars.length === 0) {
+			// No bar to plot is no series at all, which is what the one-shot path
+			// answers an empty dataset with too.
+			// 没有可绘制的 K 线就没有系列 —— 一次性路径对空数据集也是这么回答的。
+			prefixUsable = 0;
+			return;
+		}
+		for (const slot of slots) tracks.push(slot.track);
+		const newest = bars.length - 1;
+		pass(() => {
+			for (const slot of slots) {
+				const figure = studyFor(slot.name, bars)[slot.figureIndex];
+				fillTrack(slot.track, figure, bars, times, theme);
+				slot.tail = figure.values[newest] === null ? 0 : 1;
+			}
+		});
+		prefixUsable = bars.length - (tailUsable ? 1 : 0);
+	};
+
+	/**
+	 * Write the newest bar's points, appending them to `pushes`. Every study runs
+	 * over the whole dataset, because the newest bar is the one value none of them
+	 * can be resumed to.
+	 *
+	 * 写出最新一根的点，并追加到 `pushes`。每个指标都在整份数据集上跑一遍，因为最新一根
+	 * 正是它们都无法「续算」到的那一个取值。
+	 */
+	const writeBar = (pushes: IndicatorPush[]): void => {
+		const newest = bars.length - 1;
+		const time = times[newest];
+		pass(() => {
+			for (const slot of slots) {
+				const figure = studyFor(slot.name, bars)[slot.figureIndex];
+				const value = figure.values[newest];
+				const point =
+					value === null
+						? null
+						: pointFor(figure, value, newest, time, bars, theme);
+				const points = pointsOf(slot.track);
+				if (point) points.push(point);
+				slot.tail = point === null ? 0 : 1;
+				pushes.push({ point, whole: point !== null && points.length === 1 });
+			}
+		});
+	};
+
+	/**
+	 * Follow `next` from `previous` if — and only if — the change is provably
+	 * confined to the dataset's own tail. `mergeCandle` rebuilds only the dataset's
+	 * last item and carries every element before it over by reference, so comparing
+	 * the prefix by identity proves the prefix needs no new work: the studies are
+	 * causal, so their values over an unchanged prefix are unchanged too. Anything
+	 * else — another instrument, a bar sorted into the middle — is a different
+	 * dataset and gets the full pass.
+	 *
+	 * 当且仅当变化确实只落在数据集自身的尾部时，才从 `previous` 跟到 `next`。
+	 * `mergeCandle` 只重建数据集的末项，它之前的数组元素都是按引用带过来的，因此用「同一性」
+	 * 比较前缀即可证明前缀无需重算：指标是因果的，取值在未变的前缀上也未变。其余情况 ——
+	 * 换了标的、有 K 线被排序插进中间 —— 都是另一份数据集，整算。
+	 *
+	 * The tail may be longer than one item, and that is the ordinary case rather than
+	 * an exotic one: a candle that arrives while the previous one is still being
+	 * rendered joins it in the same React batch, so the dataset the layer is asked
+	 * about can have grown by two or three. Each of those items is a bar of its own,
+	 * and each one is written in turn so the series receives its points in time
+	 * order — `update` can rewrite the newest bar or append past it, one call at a
+	 * time.
+	 *
+	 * 尾部可以不止一项，而且这是常态而非特例：若一根 K 线抵达时上一根还在渲染，两者会并入
+	 * 同一批 React 更新，于是交给指标层的数据集可能一次多了两三根。其中每一项都是独立的一
+	 * 根 K 线，因此逐个写出，使系列按时间顺序收到各自的点 —— `update` 只能改写最新一根或
+	 * 在它之后追加，一次一根。
+	 */
+	const follow = (
+		previous: readonly TChartDataItem[],
+		next: readonly TChartDataItem[],
+	): boolean => {
+		const grown = next.length - previous.length;
+		if (grown < 0) return false;
+		// An empty dataset has no prefix and no last item, so there is nothing for
+		// the reasoning below to hold onto. This is the ordinary first candle of a
+		// chart whose feed started empty, and it rebuilds like any other new dataset.
+		// 空数据集既没有前缀也没有末项，下面的推断无从依托。这正是数据源自空启动时图表的
+		// 第一根 K 线，与别的全新数据集一样走重建。
+		if (previous.length === 0) return false;
+		const lastIndex = previous.length - 1;
+		for (let i = 0; i < lastIndex; i += 1) {
+			if (next[i] !== previous[i]) return false;
+		}
+		// The bars `previous`'s prefix already maps to, less the one its own last item
+		// contributed when that item carried a price.
+		// `previous` 的前缀已经映射到的那些 K 线，若其末项带着价格则再减去它贡献的那一根。
+		const prefixBars = bars.length - (tailUsable ? 1 : 0);
+		if (prefixBars !== prefixUsable) return false;
+		// Whether that last item is still the dataset's own. When it is, its bar needs
+		// nothing at all — the tail is only what was appended past it. When it is not,
+		// it was rewritten in place and its bar is written again in its place.
+		// 该末项是否仍是数据集自己的那一项。是则它的 K 线完全无需改动 —— 尾部只剩追加在它
+		// 之后的部分；否则它被就地改写，它的 K 线也随之重写。
+		const lastItem = previous[lastIndex];
+		const retains = next[lastIndex] === lastItem;
+		const dropLast = tailUsable && !retains;
+		// Where the series currently ends — read before the bar is dropped, because
+		// dropping a bar from the corpus does not take its point off the series. A
+		// rewritten bar therefore arrives at that same time and `update` overwrites
+		// it, while an appended one must be strictly later than it.
+		// 系列当前结束在哪里 —— 在丢掉那根 K 线之前读取，因为把 K 线从语料里去掉并不会把它
+		// 的点从系列上拿掉。因此被改写的那一根时间与此相同、由 `update` 覆盖，而追加的那些
+		// 必须严格晚于它。
+		const endsOn = bars.length > 0 ? Number(times[bars.length - 1]) : null;
+		if (dropLast) {
+			bars.pop();
+			times.pop();
+			for (const slot of slots) {
+				if (slot.tail === 1) pointsOf(slot.track).pop();
+				slot.tail = 0;
+			}
+		}
+		const tail: TChartDataItem[] = [];
+		for (let i = retains ? lastIndex + 1 : lastIndex; i < next.length; i += 1) {
+			if (isUsable(next[i])) tail.push(next[i]);
+		}
+		if (tail.length === 0) return false;
+		const first = Number(tail[0].time);
+		if (endsOn !== null && (dropLast ? first !== endsOn : !(first > endsOn))) return false;
+		for (let i = 1; i < tail.length; i += 1) {
+			if (!(Number(tail[i].time) > Number(tail[i - 1].time))) return false;
+		}
+
+		const pushes: IndicatorPush[] = [];
+		for (const item of tail) {
+			bars.push(toBar(item));
+			times.push(timeOf(item));
+			writeBar(pushes);
+		}
+		// The prefix of `next` is everything but its own last item, and `bars` is now
+		// exactly that prefix plus the tail it maps to.
+		// `next` 的前缀是除其自身末项以外的全部，而 `bars` 现在正是那个前缀加上它映射出的尾部。
+		tailUsable = tailUsableOf(next);
+		prefixUsable = bars.length - (tailUsable ? 1 : 0);
+		plan = { kind: "tail", pushes };
+		return true;
+	};
+
+	const advance = (next: readonly TChartDataItem[]): IndicatorPlan => {
+		if (next === held) return plan;
+		const previous = held;
+		held = next;
+		if (previous === null || !follow(previous, next)) rebuild(next);
+		return plan;
+	};
+
+	return { tracks, advance };
+}
+
+/** Whether the dataset's own last item carries a usable price. 数据集自身的末项是否带着可用价格。 */
+function tailUsableOf(data: readonly TChartDataItem[]): boolean {
+	const last = data[data.length - 1];
+	return last !== undefined && isUsable(last);
 }

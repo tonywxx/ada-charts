@@ -11,7 +11,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { OkxTChartDatafeed } from "./okx-datafeed";
 import TChart, { type TChartDataItem, type TChartProps } from "../lightweight-charts/TChart";
 import { DrawingController, type DrawingToolEntry, type MagnetBar } from "./t-chart-pro-drawing";
-import { buildIndicatorTracks } from "./t-chart-pro-indicators";
+import { createIndicatorLayer } from "./t-chart-pro-indicators";
 import {
 	areTChartProPropsEqual,
 	chartThemeOf,
@@ -341,10 +341,30 @@ function TChartPro(props: TChartProProps) {
 
 	// ---------------------------------------------------------------- indicators
 
-	const tracks = useMemo(
-		() => buildIndicatorTracks(mainList, subList, data, chartThemeOf(theme)),
-		[mainList, subList, data, theme],
+	/**
+	 * The indicator layer outlives every candle: it is built once per indicator set
+	 * and theme, and every dataset after that is *followed* rather than rebuilt.
+	 * `data` is deliberately not a dependency — following it costs one point per
+	 * series, where rebuilding it cost a full pass over every study and every point,
+	 * which is what made one streamed candle take 305 ms at 30 000 bars with six
+	 * indicators.
+	 *
+	 * 指标层比每一根 K 线活得久：每套指标集合与主题只建立一次，其后的每一份数据集都是「跟随」
+	 * 而非「重建」。`data` 有意不放在依赖里 —— 跟随它的代价是每条系列一个点，而重建要对每个
+	 * 指标的每个点整跑一遍，后者正是 30000 根、六个指标下一根流式 K 线要花 305 ms 的原因。
+	 *
+	 * `advance` is idempotent for a given dataset, so asking it here as well as from
+	 * the effect below costs nothing.
+	 *
+	 * `advance` 对同一份数据集是幂等的，因此在渲染里问一次、下面的 effect 里再问一次不花钱。
+	 */
+	const layer = useMemo(
+		() => createIndicatorLayer(mainList, subList, chartThemeOf(theme)),
+		[mainList, subList, theme],
 	);
+	layer.advance(data);
+	/** The tracks the layer currently plots, rewritten in place by every candle. 指标层当前绘制的轨迹，随每根 K 线就地改写。 */
+	const tracks = layer.tracks;
 	/** Only the composition of the set rebuilds series; a new candle does not. 只有指标组合的变化才重建系列；来一根新 K 线不会。 */
 	const tracksKey = tracks
 		.map((track) => `${track.title}@${track.paneIndex}${track.kind}`)
@@ -380,11 +400,44 @@ function TChartPro(props: TChartProProps) {
 		// 依赖 `tracksKey` 而非 `tracks`：系列集合只随指标组合变化。
 	}, [engine, tracksKey]);
 
+	/** The series set the last push went to. A new chart or a new indicator set means the series are empty again. 上一次推送落在哪一套系列上。换了图表或换了指标集合，系列又是空的。 */
+	const pushedRef = useRef<{ engine: unknown; tracks: unknown } | null>(null);
 	useEffect(() => {
-		tracks.forEach((track, index) => {
-			seriesRef.current[index]?.setData((track.perBarColors ?? track.data) as never);
+		if (!engine) return;
+		const plan = layer.advance(data);
+		const reached = pushedRef.current;
+		pushedRef.current = { engine, tracks };
+		const wholesale =
+			plan.kind === "reset" || reached?.engine !== engine || reached.tracks !== tracks;
+		if (wholesale) {
+			// A rebuild, or series that never held anything: the engine is handed the
+			// tracks themselves. This is the only push that is O(points).
+			// 重建，或系列里本来就什么都没有：把轨迹整体交给引擎。这是唯一一次 O(点数) 的推送。
+			seriesRef.current.forEach((series, index) => {
+				const track = tracks[index];
+				series.setData((track ? (track.perBarColors ?? track.data) : []) as never);
+			});
+			return;
+		}
+		// One push per bar per series, in time order: a batch of candles that landed
+		// together writes each of its bars in turn, so every `update` either rewrites
+		// the newest point or appends past it.
+		// 每根 K 线在每条系列上一项推送，按时间顺序：同一批抵达的多根 K 线逐根写出，因此每次
+		// `update` 要么改写最新的点，要么在它之后追加。
+		plan.pushes.forEach((push, index) => {
+			const series = seriesRef.current[index];
+			if (!series || !push.point) return;
+			// `update` rewrites the newest bar or appends past it. The one case it
+			// cannot serve is a series with no earlier point to sit on.
+			// `update` 改写最新一根，或在它之后追加。唯一伺候不了的是此前没有任何点的系列。
+			if (push.whole) series.setData([push.point] as never);
+			else series.update(push.point as never);
 		});
-	}, [engine, tracks]);
+		// `layer` and `tracks` change together, and `data` is the candle; the layer
+		// answers both calls with the same plan, so asking twice costs nothing.
+		// `layer` 与 `tracks` 一同变化，`data` 是那根 K 线；对同一份数据集指标层给出的计划
+		// 相同，因此问两次不额外花钱。
+	}, [engine, layer, tracks, data]);
 
 	// ----------------------------------------------------------------- drawing
 
