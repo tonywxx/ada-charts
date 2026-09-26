@@ -15,6 +15,9 @@ A chart/visualization component library for displaying data in downstream projec
 | Component | Path | Description |
 | --- | --- | --- |
 | `TChart` | `src/components/lightweight-charts/TChart.tsx` | Declarative wrapper over `lightweight-charts` v5: candlestick, line, area, bar, histogram and baseline series, with optional volume overlay, EMA overlay, reference lines, watermark, markers and full axis/interaction control. |
+| `TChartPro` | `src/components/lightweight-charts-pro/TChartPro.tsx` | The same engine with the `KChartPro` feature set on top: toolbar (symbol search, bar sizes, indicator picker, theme toggle), drawing tools via `lightweight-charts-drawing` (68 tool types, magnet, lock, undo, clear, save/restore through `drawings`), all 27 of `KChartPro`'s indicator studies, computed here and plotted as ordinary series, `Datafeed`-driven live data and a timezone-aware axis. |
+| `KChart` | `src/components/klinecharts/KChart.tsx` | Declarative wrapper over `klinecharts` v10, including its overlay and indicator catalogue. |
+| `KChartPro` | `src/components/klinecharts-pro/KChartPro.tsx` | Declarative wrapper over `@klinecharts/pro`: toolbar, drawing bar, indicators, `Datafeed` pipeline and watermark out of the box. |
 
 Props are documented bilingually (English + 中文) in JSDoc, which Storybook's Autodocs
 extracts into the ArgsTable; defaults live in `TCHART_DEFAULTS` in `t-chart-options.ts`

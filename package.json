@@ -1,70 +1,75 @@
 {
-  "name": "ada-charts",
-  "private": true,
-  "version": "0.1.0",
-  "type": "module",
-  "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && node scripts/build-lib.mjs && tsc -p tsconfig.build.json",
-    "lint": "oxlint",
-    "test": "vitest run --project unit",
-    "test:unit": "vitest run --project unit",
-    "test:storybook": "vitest run --project storybook",
-    "test:watch": "vitest",
-    "preview": "vite preview",
-    "okx:sample": "node scripts/fetch-okx-sample.mjs",
-    "storybook": "storybook dev -p 6006",
-    "build-storybook": "storybook build"
-  },
-  "dependencies": {
-    "@klinecharts/extension": "^0.1.0",
-    "@klinecharts/pro": "^0.1.1",
-    "klinecharts": "^10.0.3",
-    "klinecharts-v9": "npm:klinecharts@^9.8.10",
-    "lightweight-charts": "^5.2.1",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8"
-  },
-  "devDependencies": {
-    "@storybook/addon-docs": "^10.6.0",
-    "@storybook/addon-vitest": "^10.6.0",
-    "@storybook/react": "^10.6.0",
-    "@storybook/react-vite": "^10.6.0",
-    "@types/node": "^24.13.3",
-    "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.7",
-    "@vitejs/plugin-react": "^6.1.1",
-    "@vitest/browser-playwright": "latest",
-    "@vitest/coverage-v8": "latest",
-    "oxlint": "^1.81.0",
-    "playwright": "latest",
-    "storybook": "^10.6.0",
-    "typescript": "~6.0.2",
-    "vite": "^8.3.0",
-    "vitest": "latest"
-  },
-  "exports": {
-    "./t-chart": {
-      "types": "./dist/components/lightweight-charts/TChart.d.ts",
-      "import": "./dist/t-chart.js"
-    },
-    "./k-chart": {
-      "types": "./dist/components/klinecharts/KChart.d.ts",
-      "import": "./dist/k-chart.js"
-    },
-    "./k-chart-pro": {
-      "types": "./dist/components/klinecharts-pro/KChartPro.d.ts",
-      "import": "./dist/k-chart-pro.js"
-    },
-    "./k-chart-pro.css": "./dist/ada-charts.css"
-  },
-  "files": [
-    "dist"
-  ],
-  "peerDependencies": {
-    "klinecharts": "^10.0.3",
-    "lightweight-charts": "^5.2.1",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8"
-  }
+	"name": "ada-charts",
+	"private": true,
+	"version": "0.1.0",
+	"type": "module",
+	"scripts": {
+		"dev": "vite",
+		"build": "tsc -b && node scripts/build-lib.mjs && tsc -p tsconfig.build.json",
+		"lint": "oxlint",
+		"test": "vitest run --project unit",
+		"test:unit": "vitest run --project unit",
+		"test:storybook": "vitest run --project storybook",
+		"test:watch": "vitest",
+		"preview": "vite preview",
+		"okx:sample": "node scripts/fetch-okx-sample.mjs",
+		"storybook": "storybook dev -p 6006",
+		"build-storybook": "storybook build"
+	},
+	"dependencies": {
+		"@klinecharts/extension": "^0.1.0",
+		"@klinecharts/pro": "^0.1.1",
+		"klinecharts": "^10.0.3",
+		"klinecharts-v9": "npm:klinecharts@^9.8.10",
+		"lightweight-charts": "^5.2.1",
+		"lightweight-charts-drawing": "^0.1.1",
+		"react": "^19.2.8",
+		"react-dom": "^19.2.8"
+	},
+	"devDependencies": {
+		"@storybook/addon-docs": "^10.6.0",
+		"@storybook/addon-vitest": "^10.6.0",
+		"@storybook/react": "^10.6.0",
+		"@storybook/react-vite": "^10.6.0",
+		"@types/node": "^24.13.3",
+		"@types/react": "^19.2.18",
+		"@types/react-dom": "^19.2.7",
+		"@vitejs/plugin-react": "^6.1.1",
+		"@vitest/browser-playwright": "latest",
+		"@vitest/coverage-v8": "latest",
+		"oxlint": "^1.81.0",
+		"playwright": "latest",
+		"storybook": "^10.6.0",
+		"typescript": "~6.0.2",
+		"vite": "^8.3.0",
+		"vitest": "latest"
+	},
+	"exports": {
+		"./t-chart": {
+			"types": "./dist/components/lightweight-charts/TChart.d.ts",
+			"import": "./dist/t-chart.js"
+		},
+		"./k-chart": {
+			"types": "./dist/components/klinecharts/KChart.d.ts",
+			"import": "./dist/k-chart.js"
+		},
+		"./k-chart-pro": {
+			"types": "./dist/components/klinecharts-pro/KChartPro.d.ts",
+			"import": "./dist/k-chart-pro.js"
+		},
+		"./t-chart-pro": {
+			"types": "./dist/components/lightweight-charts-pro/TChartPro.d.ts",
+			"import": "./dist/t-chart-pro.js"
+		},
+		"./k-chart-pro.css": "./dist/ada-charts.css"
+	},
+	"files": [
+		"dist"
+	],
+	"peerDependencies": {
+		"klinecharts": "^10.0.3",
+		"lightweight-charts": "^5.2.1",
+		"react": "^19.2.8",
+		"react-dom": "^19.2.8"
+	}
 }

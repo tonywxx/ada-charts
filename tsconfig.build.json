@@ -9,6 +9,15 @@
 		"rootDir": "src",
 		"tsBuildInfoFile": "./node_modules/.tmp/tsconfig.build.tsbuildinfo"
 	},
-	"include": ["src/components/lightweight-charts/TChart.tsx", "src/components/klinecharts/KChart.tsx", "src/components/klinecharts-pro/KChartPro.tsx"],
-	"exclude": ["src/**/*.stories.tsx", "src/**/*.test.ts", "src/**/__data__/**/*"]
+	"include": [
+		"src/components/lightweight-charts/TChart.tsx",
+		"src/components/klinecharts/KChart.tsx",
+		"src/components/klinecharts-pro/KChartPro.tsx",
+		"src/components/lightweight-charts-pro/TChartPro.tsx"
+	],
+	"exclude": [
+		"src/**/*.stories.tsx",
+		"src/**/*.test.ts",
+		"src/**/__data__/**/*"
+	]
 }

@@ -855,6 +855,15 @@ export interface TChartProps {
 	 * 图表尺寸变化。
 	 */
 	onSizeChange?: () => void;
+	/**
+	 * Receives the created chart together with its main series, for imperative
+	 * control. Called again whenever `chartType` rebuilds the series, so the
+	 * handle never points at a removed one.
+	 *
+	 * 回调创建出的图表及其主系列，用于命令式控制。`chartType` 重建系列时会再次调用，
+	 * 因此交出去的引用不会指向已被移除的那个。
+	 */
+	onChartReady?: (chart: IChartApi, mainSeries: ISeriesApi<SeriesType>) => void;
 
 	// ------------------------------------------------------ escape hatches
 	/**
@@ -1067,7 +1076,28 @@ function TChart(props: TChartProps) {
 			ema2.setData(calcEMA(data, options.emaPeriod2) as never);
 		}
 
+		// The handle carries the series as well as the chart, because a caller
+		// attaching to the chart has to attach to whichever main series is live now.
+		// 交出的句柄连系列一起交出：挂在图表上的调用方，实际要挂在当时活着的那个主系列上。
+		latestRef.current.props.onChartReady?.(chart, series);
+
 		return () => {
+			// The handles are dropped first, ahead of the liveness test below, because
+			// the effects that watch them take "the ref no longer names my object" as
+			// their own liveness criterion. On unmount this cleanup returns early, and
+			// leaving the handles behind made that criterion quietly untrue — so the
+			// cleanups declared after this one went on reaching into a removed series.
+			// Either way the handles name objects that are already gone.
+			// 先丢句柄、再判活：盯着它们的 effect 是以「ref 不再是我的那个对象」作为自己的存活
+			// 判据。卸载时本 cleanup 会提前返回，把句柄留着会静默地让那条判据失效 —— 于是声明在
+			// 本 effect 之后的 cleanup 继续往已移除的 series 里伸手。无论如何，这些句柄指向的
+			// 对象都已不存在。
+			seriesRef.current = null;
+			volumeRef.current = null;
+			ema1Ref.current = null;
+			ema2Ref.current = null;
+			markersRef.current = null;
+
 			// This effect is declared after the mount, so on unmount the chart is
 			// already gone and its series with it. Removing them again is the
 			// `Value is undefined` failure the story suite was hitting.
@@ -1078,11 +1108,6 @@ function TChart(props: TChartProps) {
 			if (ema2) chart.removeSeries(ema2);
 			if (volume) chart.removeSeries(volume);
 			chart.removeSeries(series);
-			ema1Ref.current = null;
-			ema2Ref.current = null;
-			volumeRef.current = null;
-			seriesRef.current = null;
-			markersRef.current = null;
 		};
 	}, [
 		resolved.chartType,
@@ -1202,6 +1227,17 @@ function TChart(props: TChartProps) {
 			dataRef.current,
 		).map((spec) => series.createPriceLine(spec));
 		return () => {
+			// Price lines belong to this series, so the series is the criterion: once
+			// the ref no longer names it, the series — and the lines with it — are
+			// already gone. Reaching in regardless is not harmless: a removed series
+			// still accepts `removePriceLine` and invalidates the destroyed chart
+			// widget, which schedules a paint against disposed canvases and surfaces
+			// as an unhandled `Object is disposed` long after the test ended.
+			// 参考线属于这个系列，所以判据是系列本身：ref 不再指向它，就说明系列连同参考线都已
+			// 拆除。硬伸手并不无害：已被移除的 series 仍会接受 `removePriceLine`，并让已销毁的
+			// chart widget 失效、排出一次打在已释放 canvas 上的绘制，表现为测试早已结束后才
+			// 冒出来的未捕获 `Object is disposed`。
+			if (seriesRef.current !== series) return;
 			for (const line of created) {
 				try {
 					series.removePriceLine(line);
