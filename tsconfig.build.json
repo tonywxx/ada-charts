@@ -11,9 +11,10 @@
 	},
 	"include": [
 		"src/components/lightweight-charts/TChart.tsx",
-		"src/components/klinecharts/KChart.tsx",
+		"src/components/adachart/AdaChart.tsx",
 		"src/components/klinecharts-pro/KChartPro.tsx",
-		"src/components/lightweight-charts-pro/TChartPro.tsx"
+		"src/components/lightweight-charts-pro/TChartPro.tsx",
+		"src/components/adachart-pro/AdaChartPro.tsx"
 	],
 	"exclude": [
 		"src/**/*.stories.tsx",

@@ -17,11 +17,11 @@ const klinechartsV9Esm = createRequire(path.join(process.cwd(), "noop.cjs")).res
 
 /**
  * Redirect only `@klinecharts/pro`'s `klinecharts` import to the v9 copy so Pro
- * (v9 runtime) and `KChart` / `@klinecharts/extension` (v10) coexist. Mirrors the
+ * (v9 runtime) and `AdaChart` / `@klinecharts/extension` (v10) coexist. Mirrors the
  * identical plugin in `vite.config.ts`.
  *
  * 仅把 `@klinecharts/pro` 的 `klinecharts` 引用重定向到 v9 副本，使 Pro（v9 运行时）与
- * `KChart` / `@klinecharts/extension`（v10）共存。与 `vite.config.ts` 中的同名插件一致。
+ * `AdaChart` / `@klinecharts/extension`（v10）共存。与 `vite.config.ts` 中的同名插件一致。
  */
 function klinechartsProUsesV9(): Plugin {
 	return {

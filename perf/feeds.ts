@@ -13,7 +13,15 @@ import type {
 	Period,
 	SymbolInfo,
 } from "@klinecharts/pro";
-import type { KLineData } from "klinecharts";
+import type {
+	DataLoader,
+	DataLoaderGetBarsParams,
+	DataLoaderSubscribeBarParams,
+	DataLoaderUnsubscribeBarParams,
+	KLineData,
+	Period as V10Period,
+	SymbolInfo as V10SymbolInfo,
+} from "klinecharts";
 import type {
 	TChartProCandle,
 	TChartProDatafeed,
@@ -158,6 +166,59 @@ export function kChartFeed(candles: PerfCandle[]): FeedHandle<Datafeed> {
 				onNext = callback;
 			},
 			unsubscribe() {
+				onNext = null;
+			},
+		},
+		historyDone,
+		push: (candle) => onNext?.(toKLineData(candle)),
+		subscribed: () => onNext !== null,
+	};
+}
+
+/** v10's own `SymbolInfo` / `Period` shapes — the pair `AdaChartPro` is handed. v10 自己的 `SymbolInfo` / `Period` 形状，也就是交给 `AdaChartPro` 的那一对。 */
+export const PERF_SYMBOL_V10: V10SymbolInfo = {
+	ticker: PERF_SYMBOL.ticker,
+	pricePrecision: 2,
+	volumePrecision: 0,
+};
+
+export const PERF_PERIOD_V10: V10Period = { type: "day", span: 1 };
+
+/**
+ * A `klinecharts` v10 {@link DataLoader} over `candles` — the v10 counterpart of
+ * {@link kChartFeed}, so `AdaChartPro` is measured on the same series through the
+ * same one-macrotask history path as the other two.
+ *
+ * 基于 `candles` 的 `klinecharts` v10 {@link DataLoader} —— {@link kChartFeed} 的 v10 对应物，
+ * 使 `AdaChartPro` 与另外两者吃同一条序列、走同一个宏任务历史路径。
+ */
+export function adaChartProFeed(candles: PerfCandle[]): FeedHandle<DataLoader> {
+	const items = candles.map(toKLineData);
+	let onNext: ((data: KLineData) => void) | null = null;
+	let markHistory!: () => void;
+	const historyDone = new Promise<void>((resolve) => {
+		markHistory = resolve;
+	});
+
+	return {
+		feed: {
+			// `forward` / `backward` are history paging; this feed answers the whole
+			// snapshot at once, so only `init` and `update` carry data.
+			// `forward` / `backward` 是历史翻页；本数据源一次给出完整快照，因此只有 `init`
+			// 与 `update` 带数据。
+			async getBars(params: DataLoaderGetBarsParams) {
+				if (params.type !== "init" && params.type !== "update") {
+					params.callback([], false);
+					return;
+				}
+				await ioLatency();
+				markHistory();
+				params.callback(items, false);
+			},
+			subscribeBar(params: DataLoaderSubscribeBarParams) {
+				onNext = params.callback;
+			},
+			unsubscribeBar(_params: DataLoaderUnsubscribeBarParams) {
 				onNext = null;
 			},
 		},

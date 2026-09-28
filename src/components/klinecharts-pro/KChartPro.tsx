@@ -4,7 +4,7 @@ import type { DeepPartial, Styles } from "klinecharts";
 import { memo, useEffect, useMemo, useRef } from "react";
 import { dispose as disposeV9Chart } from "klinecharts-v9";
 import { useEngineMount } from "../../engine-mount";
-import { mergeStyles, themeStyles } from "../klinecharts/k-line-styles";
+import { mergeStyles, themeStyles } from "../adachart/adachart-styles";
 import {
 	KCHARTPRO_DEFAULTS,
 	KCHARTPRO_DEFAULT_PERIODS,
@@ -145,11 +145,11 @@ function resolveKChartProProps(props: KChartProProps): KChartProResolvedProps {
  * 它自带工具栏（周期切换、指标选择、画线工具、主题切换）、由 {@link Datafeed} 驱动的数据管线，
  * 以及水印，全部预先接线。
  *
- * Like `TChart` and `KChart`, it defaults to live OKX candles: the bundled
+ * Like `TChart` and `AdaChart`, it defaults to live OKX candles: the bundled
  * {@link OkxDatafeed} fetches history over REST and refreshes the newest bar on
  * an interval, so the chart tracks the real market out of the box.
  *
- * 与 `TChart`、`KChart` 一样，默认使用实时 OKX 行情：内置的 {@link OkxDatafeed} 通过 REST 拉取
+ * 与 `TChart`、`AdaChart` 一样，默认使用实时 OKX 行情：内置的 {@link OkxDatafeed} 通过 REST 拉取
  * 历史并按周期刷新最新一根，因此开箱即用地跟随真实市场。
  */
 function KChartPro(props: KChartProProps) {
@@ -198,9 +198,9 @@ function KChartPro(props: KChartProProps) {
 				drawingBarVisible: options.drawingBarVisible,
 				mainIndicators: options.mainIndicators,
 				subIndicators: options.subIndicators,
-				// The same Theme tokens `KChart` fans out, so a rising candle is the same
+				// The same Theme tokens `AdaChart` fans out, so a rising candle is the same
 				// green in both klinecharts-based Wrappers. Caller `styles` still win.
-				// 与 `KChart` 扇出的是同一批 Theme token，因此两个基于 klinecharts 的 Wrapper
+				// 与 `AdaChart` 扇出的是同一批 Theme token，因此两个基于 klinecharts 的 Wrapper
 				// 里上涨蜡烛是同一个绿色。调用方传入的 `styles` 仍然优先。
 				styles: mergeStyles(themeStyles(options.theme), options.styles),
 				...(options.watermark ? { watermark: options.watermark } : {}),

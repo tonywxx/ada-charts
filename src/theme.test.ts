@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { TCHART_DEFAULTS } from "./components/lightweight-charts/t-chart-options";
-import { mergeStyles, themeStyles } from "./components/klinecharts/k-line-styles";
+import { mergeStyles, themeStyles } from "./components/adachart/adachart-styles";
 import { DARK_THEME, LIGHT_THEME, withAlpha } from "./theme";
 
 describe("withAlpha", () => {

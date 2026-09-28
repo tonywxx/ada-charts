@@ -1,0 +1,694 @@
+/*
+ * `AdaChartPro` chrome: the toolbar strip, the drawing bar and the watermark.
+ *
+ * All three are DOM, so none can come from the chart's own `Styles` tree — that
+ * tree only reaches the canvas. The two named themes are expressed here as CSS
+ * custom properties on one `data-theme` attribute, which is what keeps the
+ * chrome and the canvas agreeing instead of drifting into two palettes.
+ *
+ * `AdaChartPro` 的外围：工具栏条、画线栏与水印。
+ *
+ * 三者都是 DOM，因此都取不到图表自己的 `Styles` 树 —— 那棵树只到达 canvas。两个命名主题
+ * 在这里被表达为一个 `data-theme` 属性上的 CSS 自定义属性，这正是让外围与 canvas 保持
+ * 一致、而不是各自漂成一套配色的原因。
+ *
+ * `--adacp-surface` is the chart surface, and it has to be painted on
+ * `.adachart-pro__body` — *outside* the element that holds the canvas. `AdaChart`
+ * normally paints this colour itself (its canvas is transparent, so the wrapper
+ * supplies the background), but anything the wrapper paints sits inside
+ * `.adachart-pro__chart` and therefore above the watermark, which would hide the
+ * watermark completely. So `AdaChartPro` passes `transparent` instead and owns
+ * the surface here. Keep those two facts together: moving this background back
+ * onto the chart layer silently makes the watermark invisible again.
+ *
+ * `--adacp-surface` 是图表表面色，必须涂在 `.adachart-pro__body` 上 —— 也就是承载 canvas 的
+ * 那个元素**之外**。`AdaChart` 平时自己涂这个颜色（它的 canvas 是透明的，背景由封装层提供），
+ * 但封装层涂的任何东西都在 `.adachart-pro__chart` 之内、因而位于水印之上，会把水印完全盖住。
+ * 因此 `AdaChartPro` 改传 `transparent`，表面色由这里负责。这两件事必须一起改：把这个背景挪回
+ * 图表层会让水印重新变得不可见。
+ */
+
+.adachart-pro {
+	position: relative;
+}
+
+.adachart-pro[data-theme="light"] {
+	--adacp-bar: #f1f3f7;
+	--adacp-panel: #ffffff;
+	--adacp-surface: #ffffff;
+	--adacp-border: #d1d4dc;
+	--adacp-input: #ffffff;
+	--adacp-text: #1e2329;
+	--adacp-accent: #1677ff;
+	--adacp-label: #ffffff;
+}
+
+.adachart-pro[data-theme="dark"] {
+	--adacp-bar: #1f1f28;
+	--adacp-panel: #16161c;
+	--adacp-surface: #16161c;
+	--adacp-border: #3a3a46;
+	--adacp-input: #23232c;
+	--adacp-text: #b2b5be;
+	--adacp-accent: #1677ff;
+	--adacp-label: #ffffff;
+}
+
+.adachart-pro__toolbar {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 4px;
+	padding: 6px 8px;
+	background: var(--adacp-bar);
+	border-bottom: 1px solid var(--adacp-border);
+	color: var(--adacp-text);
+}
+
+.adachart-pro__group {
+	position: relative;
+	display: flex;
+	align-items: center;
+	gap: 2px;
+}
+
+.adachart-pro__button {
+	appearance: none;
+	padding: 3px 8px;
+	border: 1px solid transparent;
+	border-radius: 4px;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	line-height: 18px;
+	cursor: pointer;
+}
+
+.adachart-pro__button:disabled {
+	opacity: 0.45;
+	cursor: default;
+}
+
+.adachart-pro__button--active {
+	background: var(--adacp-accent);
+	color: var(--adacp-label);
+}
+
+.adachart-pro__button--end {
+	margin-left: auto;
+}
+
+.adachart-pro__panel {
+	position: absolute;
+	top: 100%;
+	left: 0;
+	z-index: 10;
+	min-width: 220px;
+	max-height: 320px;
+	overflow-y: auto;
+	padding: 8px;
+	background: var(--adacp-panel);
+	border: 1px solid var(--adacp-border);
+	border-radius: 6px;
+	box-shadow: 0 6px 18px rgb(0 0 0 / 18%);
+}
+
+.adachart-pro__section {
+	margin: 6px 0 2px;
+	font-size: 0.9em;
+	opacity: 0.7;
+	text-transform: uppercase;
+}
+
+.adachart-pro__item {
+	display: block;
+	width: 100%;
+	padding: 4px 6px;
+	border: none;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
+}
+
+.adachart-pro__item--active {
+	background: var(--adacp-accent);
+	color: var(--adacp-label);
+}
+
+.adachart-pro__input {
+	box-sizing: border-box;
+	width: 100%;
+	margin-bottom: 6px;
+	padding: 4px 6px;
+	border: 1px solid var(--adacp-border);
+	border-radius: 4px;
+	background: var(--adacp-input);
+	color: inherit;
+	font: inherit;
+}
+
+/* The drawing bar and the chart sit side by side; only the chart grows.
+ * 画线栏与图表并排；只有图表会伸展。 */
+.adachart-pro__main {
+	display: flex;
+	align-items: stretch;
+}
+
+/* The left strip: a column of 32px glyph buttons in a 52px-wide rail, as in
+ * `@klinecharts/pro`. `flex: 0 0 auto` keeps the rail at its own width while
+ * the body takes the rest.
+ *
+ * 左侧条：52px 宽的轨道里一列 32px 图标按钮，与 `@klinecharts/pro` 一致。
+ * `flex: 0 0 auto` 让轨道保持自身宽度，余下空间归 body。 */
+.adachart-pro__drawing-bar {
+	/* `border-box` keeps the rail at a true 52px *including* its right border,
+	 * as in the source; otherwise the border makes it 53px and steals a pixel
+	 * from the chart.
+	 *
+	 * `border-box` 让轨道连右边界一起正好 52px，与源一致；否则边界会把它撑成 53px，
+	 * 从图表那里偷走一像素。 */
+	box-sizing: border-box;
+	position: relative;
+	flex: 0 0 auto;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 2px;
+	width: 52px;
+	padding: 6px 0;
+	background: var(--adacp-bar);
+	border-right: 1px solid var(--adacp-border);
+	color: var(--adacp-text);
+}
+
+/* A row spans the rail's inner width and centres its glyph there, as in
+ * `@klinecharts/pro`. The expand arrow reserves no space — it is painted over
+ * the row's right edge — so the glyph, not the row's contents, is what the eye
+ * lines up.
+ *
+ * 每一行占满轨道的内部宽度、图标在行内居中，与 `@klinecharts/pro` 一致。展开箭头不占位置 ——
+ * 它被画在行的右缘之上 —— 因此对齐的是图标本身，而不是行的内容盒。 */
+.adachart-pro__drawing-item {
+	position: relative;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 100%;
+}
+
+.adachart-pro__icon-button,
+.adachart-pro__icon-arrow {
+	appearance: none;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 32px;
+	height: 32px;
+	padding: 0;
+	border: none;
+	border-radius: 4px;
+	background: transparent;
+	color: inherit;
+	cursor: pointer;
+}
+
+.adachart-pro__icon-button:hover,
+.adachart-pro__icon-arrow:hover {
+	background: rgb(127 127 127 / 18%);
+}
+
+/* The chevron is `@klinecharts/pro`'s: a 10px strip pinned to the row's right
+ * edge, kept invisible until the row is hovered, the arrow is focused, or the
+ * sub-list is open. At rest the rail is a clean column of glyphs — the arrow
+ * only appears for the row you are actually pointing at.
+ *
+ * 箭头取自 `@klinecharts/pro`：一条 10px 窄条钉在行的右缘，在行被悬停、箭头被聚焦或子列表
+ * 已展开之前保持不可见。静止时轨道是一列干净的图标 —— 箭头只在鼠标真正指向的那一行出现。 */
+.adachart-pro__icon-arrow {
+	position: absolute;
+	top: 0;
+	right: 0;
+	width: 10px;
+	height: 32px;
+	opacity: 0;
+	transition: all 0.2s;
+	border-radius: 2px 0 0 2px;
+}
+
+.adachart-pro__drawing-item:hover .adachart-pro__icon-arrow,
+.adachart-pro__icon-arrow:focus-visible,
+.adachart-pro__icon-arrow--open {
+	opacity: 1;
+}
+
+/* Selected states come last and are written with their base class, so they win
+ * over the `:hover` rules above rather than being replaced by a hover tint.
+ * 选中态写在最后，且带上基础类名，因此能压过上面的 `:hover` 规则，而不会被悬停底色替换。 */
+.adachart-pro__icon-button.adachart-pro__icon-button--selected {
+	background: var(--adacp-accent);
+	color: var(--adacp-label);
+}
+
+/* The copied glyphs are fill-based and carry no colour of their own — `fill:
+ * currentColor` is the whole contract, and it is also why selecting a button
+ * recolours its icon with no extra rule.
+ *
+ * 移植来的图标是以填充为主的、自身不带颜色 —— `fill: currentColor` 就是全部契约，也正是
+ * 选中按钮时图标无需额外规则就跟着变色的原因。 */
+.adachart-pro__icon {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.adachart-pro__icon svg {
+	display: block;
+	width: 20px;
+	height: 20px;
+	fill: currentColor;
+}
+
+/* The chevron's cell is 4x6 rather than the glyphs' 22x22, and it is drawn at
+ * exactly that size — a 10px strip leaves no room for more. It is the *svg* that
+ * turns over when a sub-list opens, as in the source, so the strip's rounded
+ * corner stays where it is.
+ *
+ * 箭头的画布是 4x6 而非图标的 22x22，并且就按这个尺寸绘制 —— 10px 的窄条放不下更多。子列表
+ * 展开时翻面的是 *svg*，与源一致，这样窄条的圆角仍留在原处。 */
+.adachart-pro__icon-arrow .adachart-pro__icon svg {
+	width: 4px;
+	height: 6px;
+	transition: all 0.2s;
+}
+
+.adachart-pro__icon-arrow--open .adachart-pro__icon svg {
+	transform: rotate(180deg);
+}
+
+/* A group's sub-list opens to the right of its glyph, over the chart.
+ * 组的子列表向图标右侧展开，覆盖在图表之上。 */
+.adachart-pro__drawing-list {
+	position: absolute;
+	top: 0;
+	left: calc(100% + 1px);
+	z-index: 10;
+	min-width: 190px;
+	max-height: 320px;
+	overflow-y: auto;
+	margin: 0;
+	padding: 4px;
+	list-style: none;
+	background: var(--adacp-panel);
+	border: 1px solid var(--adacp-border);
+	border-radius: 6px;
+	box-shadow: 0 6px 18px rgb(0 0 0 / 18%);
+}
+
+.adachart-pro__drawing-entry {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	padding: 4px 6px;
+	border: none;
+	border-radius: 4px;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
+}
+
+.adachart-pro__drawing-entry:hover {
+	background: rgb(127 127 127 / 18%);
+}
+
+.adachart-pro__drawing-entry.adachart-pro__drawing-entry--selected {
+	background: var(--adacp-accent);
+	color: var(--adacp-label);
+}
+
+.adachart-pro__drawing-text {
+	white-space: nowrap;
+}
+
+.adachart-pro__split-line {
+	flex: 0 0 auto;
+	width: 32px;
+	height: 1px;
+	margin: 4px 0;
+	background: var(--adacp-border);
+}
+
+.adachart-pro__body {
+	position: relative;
+	flex: 1 1 auto;
+	min-width: 0;
+	background: var(--adacp-surface);
+}
+
+/* The chart sits above the watermark: both are positioned, so this is the
+ * painting order made explicit rather than left to DOM sequence. It only reads
+ * as "watermark under the chart" because nothing between them is opaque — the
+ * chart layer is transparent and the surface is painted one level up, on
+ * `.adachart-pro__body`. See the header comment.
+ *
+ * 图表压在水印之上：两者都是定位元素，因此这里把绘制次序写明，而不是交给 DOM 顺序决定。
+ * 它之所以读起来是「水印压在图表之下」，全靠两者之间没有任何不透明物 —— 图表层是透明的，
+ * 表面色涂在上一层 `.adachart-pro__body` 上。详见文件头注释。 */
+.adachart-pro__chart {
+	position: relative;
+	z-index: 1;
+}
+
+/* `pointer-events: none` is what makes the watermark a decoration: without it
+ * the crosshair could not be reached through it.
+ * `pointer-events: none` 才是水印作为装饰的关键：少了它，十字光标就穿不过它。 */
+.adachart-pro__watermark {
+	position: absolute;
+	inset: 0;
+	z-index: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	overflow: hidden;
+	pointer-events: none;
+	user-select: none;
+	font-size: 44px;
+	font-weight: 600;
+	letter-spacing: 2px;
+	color: var(--adacp-text);
+	opacity: 0.08;
+}
+
+/* Fullscreen: the root itself becomes the viewport, so the chrome keeps its own
+ * rows and the chart takes everything left over.
+ *
+ * `!important` on the width is not decoration: `autoSize: false` puts a fixed
+ * pixel width *inline* on this same element, and an inline style outranks the
+ * UA sheet's `:fullscreen` rule. Without it, going fullscreen on a fixed-width
+ * wrapper pins a narrow element to the top-left corner. The height needs no
+ * such force because nothing declares one inline.
+ *
+ * 全屏：根元素自己成为视口，外围各保留自己那一行，图表吃掉余下的全部。
+ *
+ * 宽度上的 `!important` 不是装饰：`autoSize: false` 会在同一元素上*内联*写入固定像素宽度，
+ * 而内联样式压得过 UA 样式表里的 `:fullscreen` 规则。少了它，固定宽度的外层一进全屏就是
+ * 左上角一个窄条。高度无需如此强硬，因为没有任何地方内联声明它。
+ */
+.adachart-pro:fullscreen {
+	display: flex;
+	flex-direction: column;
+	width: 100% !important;
+	height: 100%;
+	background: var(--adacp-surface);
+}
+
+.adachart-pro:fullscreen .adachart-pro__main {
+	flex: 1 1 auto;
+	min-height: 0;
+}
+
+/* The chart body's height comes from the column flex above stretching it; the
+ * chart below is a block child, so it needs the percentage spelled out. Both
+ * rules then have to outrank `AdaChart`, which writes pixel `width` / `height`
+ * *inline* on its own host element whenever `autoSize` is off — the one thing
+ * only `!important` can beat. The height is forced for the same reason the root
+ * forces its width, and the width for the same reason the root forces its own:
+ * a fixed-size wrapper would otherwise sit in the corner at its own size.
+ *
+ * 图表区的高度由上面那条纵向 flex 拉伸而来；它下面的图表是块级子元素，因此这个百分比要写明。
+ * 这两条随后都必须压过 `AdaChart` —— 只要 `autoSize` 关着，它就会在自己的宿主元素上*内联*写入
+ * 像素 `width` / `height`，那是只有 `!important` 才压得过的东西。高度强制与根强制宽度的理由相同，
+ * 宽度强制与根强制自己宽度的理由相同：否则定尺寸的外层会以自己的尺寸缩在角落里。 */
+.adachart-pro:fullscreen .adachart-pro__chart {
+	height: 100%;
+}
+
+.adachart-pro:fullscreen .adachart-pro__chart > div {
+	width: 100% !important;
+	height: 100% !important;
+}
+
+/* The screenshot dialog and its backdrop. Both are `position: fixed` and are
+ * siblings, so they cover the chart rather than only the toolbar they are
+ * mounted in — and so a click on the backdrop cannot bubble to the toolbar and
+ * be mistaken for an outside click on a dropdown.
+ *
+ * 截屏对话框与其遮罩。两者都是 `position: fixed` 且互为兄弟，因此盖住图表而不只是它们挂载的
+ * 那条工具栏 —— 也正因如此，点遮罩不会冒泡到工具栏被当成下拉的「点击外部」。
+ */
+.adachart-pro__modal-backdrop {
+	position: fixed;
+	inset: 0;
+	z-index: 100;
+	appearance: none;
+	padding: 0;
+	border: none;
+	background: rgb(0 0 0 / 45%);
+	cursor: pointer;
+}
+
+.adachart-pro__modal {
+	position: fixed;
+	top: 50%;
+	left: 50%;
+	z-index: 101;
+	transform: translate(-50%, -50%);
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	max-width: min(540px, 90vw);
+	max-height: 90vh;
+	/* The dialogs are forms and a form can outgrow the viewport — the indicator
+	 * parameter dialog grows with the indicator's line count. Scrolling belongs
+	 * to the dialog rather than to its body, so the title row stays reachable
+	 * no matter how long the form gets.
+	 *
+	 * 对话框是表单，而表单可以高过视口 —— 指标参数对话框随指标的线条数增长。滚动归对话框
+	 * 而不是它的主体，因此不管表单多长，标题行都够得着。 */
+	overflow-y: auto;
+	padding: 12px;
+	background: var(--adacp-panel);
+	border: 1px solid var(--adacp-border);
+	border-radius: 6px;
+	box-shadow: 0 12px 32px rgb(0 0 0 / 35%);
+	color: var(--adacp-text);
+}
+
+.adachart-pro__modal-header {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.adachart-pro__modal-title {
+	font-weight: 600;
+}
+
+.adachart-pro__modal-close {
+	appearance: none;
+	margin-left: auto;
+	width: 24px;
+	height: 24px;
+	padding: 0;
+	border: none;
+	border-radius: 4px;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	line-height: 1;
+	cursor: pointer;
+}
+
+.adachart-pro__modal-close:hover {
+	background: rgb(127 127 127 / 18%);
+}
+
+.adachart-pro__modal-image {
+	display: block;
+	width: 500px;
+	max-width: 100%;
+}
+
+.adachart-pro__modal-footer {
+	display: flex;
+	justify-content: flex-end;
+}
+
+/* The icon button is a square, so its glyph sits on the strip's baseline rather
+ * than adding the text buttons' horizontal padding around a 22px drawing.
+ * 图标按钮是正方形，因此它的图形落在与文字按钮一致的基线上，而不是在 22px 的图形周围
+ * 再加上文字按钮的横向内边距。 */
+.adachart-pro__button--icon {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 3px;
+}
+
+.adachart-pro__menu-icon {
+	display: block;
+}
+
+/* The instrument's logo, when it has one. `alt=""` in the markup is what keeps
+ * it decoration; here it only has to line up with the label beside it.
+ * 标的的 logo（有时才有）。标记里的 `alt=""` 才是把它定为装饰的那一处；这里它只需与旁边的
+ * 文案对齐。 */
+.adachart-pro__logo {
+	width: 16px;
+	height: 16px;
+	margin-right: 4px;
+	border-radius: 50%;
+	object-fit: contain;
+	vertical-align: -3px;
+}
+
+/* The price unit badge, hung inside the engine's own y-axis widget — see the
+ * effect in `AdaChartPro.tsx`. `pointer-events: none` because it is a label, not
+ * a control: the axis beneath it still has to be hoverable.
+ *
+ * 价格单位徽标，挂在引擎自己的 y 轴部件里 —— 见 `AdaChartPro.tsx` 中的 effect。
+ * `pointer-events: none` 因为它是标签而非控件：它下面的坐标轴仍须可悬停。 */
+.adachart-pro__price-unit {
+	position: absolute;
+	top: 4px;
+	left: 50%;
+	transform: translate(-50%, 0);
+	padding: 1px 4px;
+	border: 1px solid var(--adacp-border);
+	border-radius: 4px;
+	background-color: var(--adacp-panel);
+	color: var(--adacp-text);
+	box-shadow: 0 3px 3px rgb(50 50 50 / 30%);
+	font-size: 10px;
+	font-weight: 700;
+	pointer-events: none;
+}
+
+/* Loading and empty are both absolute siblings of the chart inside
+ * `.adachart-pro__body`, so neither disturbs the layout. Loading sits below the
+ * empty state's z-index: "no data" is the final answer and must not be covered
+ * by a spinner that is still animating.
+ *
+ * 加载中与空状态都是 `.adachart-pro__body` 里图表的绝对定位兄弟，因此都不影响布局。加载中
+ * 的层级低于空状态：「没有数据」是最终答案，不该被仍在旋转的加载动画盖住。 */
+.adachart-pro__loading {
+	position: absolute;
+	inset: 0;
+	z-index: 50;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--adacp-accent);
+	pointer-events: none;
+}
+
+.adachart-pro__loading-circle {
+	display: block;
+	width: 10px;
+	height: 10px;
+	border-radius: 50%;
+	background-color: currentColor;
+	animation: adachart-pro-loading-anim 0.8s ease-in-out alternate infinite;
+}
+
+/* Staggered so the three read as a travelling dot rather than one blinking
+ * blob — the source's own delays, kept in its order.
+ * 错开延迟，使三点读起来像一颗移动的点而不是一团同步闪烁的东西 —— 沿用来源自身的延迟与顺序。 */
+.adachart-pro__loading-circle:nth-child(1) {
+	animation-delay: 0.48s;
+}
+
+.adachart-pro__loading-circle:nth-child(2) {
+	margin: 0 0.2em;
+	animation-delay: 0.32s;
+}
+
+.adachart-pro__loading-circle:nth-child(3) {
+	animation-delay: 0.16s;
+}
+
+@keyframes adachart-pro-loading-anim {
+	from {
+		margin-top: 0;
+	}
+
+	to {
+		margin-top: -2.2em;
+	}
+}
+
+.adachart-pro__empty {
+	position: absolute;
+	inset: 0;
+	z-index: 99;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	fill: var(--adacp-text);
+	color: var(--adacp-text);
+	opacity: 0.6;
+	pointer-events: none;
+}
+
+.adachart-pro__empty-icon {
+	width: 50px;
+	height: 50px;
+}
+
+/* The three dialogs' form rows: one label per control, the control sized by the
+ * dialog's own width rather than by its content, so a long `select` option
+ * cannot stretch the dialog.
+ *
+ * 三个对话框的表单行：每个控件一个标签，控件宽度由对话框自身宽度决定而不是由内容撑开，
+ * 因此较长的 `select` 选项不会把对话框拉宽。 */
+.adachart-pro__fields {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.adachart-pro__field {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.adachart-pro__field-label {
+	flex: 1 1 auto;
+}
+
+.adachart-pro__select,
+.adachart-pro__number,
+.adachart-pro__color {
+	box-sizing: border-box;
+	flex: 0 0 auto;
+	min-width: 0;
+	padding: 3px 6px;
+	border: 1px solid var(--adacp-border);
+	border-radius: 4px;
+	background: var(--adacp-input);
+	color: inherit;
+	font: inherit;
+}
+
+.adachart-pro__select {
+	flex: 1 1 50%;
+}
+
+.adachart-pro__number {
+	width: 80px;
+}
+
+/* A colour swatch is a swatch, not a field: it keeps the input's own chrome out
+ * of the way and lets the browser's picker button fill it.
+ * 颜色样块就是样块而不是输入框：它让输入框自带的边框让开，由浏览器的取色按钮填满它。 */
+.adachart-pro__color {
+	width: 36px;
+	height: 24px;
+	padding: 1px;
+}

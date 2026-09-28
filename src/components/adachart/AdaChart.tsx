@@ -3,6 +3,7 @@ import {
 	init,
 	type ActionCallback,
 	type ActionType,
+	type AxisCreateRangeCallback,
 	type CandleType,
 	type Chart,
 	type DataLoader,
@@ -29,30 +30,33 @@ import { memo, useEffect, useMemo, useRef } from "react";
 import { decideDataPatch } from "../../data-patch";
 import { useEngineMount } from "../../engine-mount";
 import {
-	KCHART_DEFAULTS,
-	areKChartPropsEqual,
+	ADACHART_DEFAULTS,
+	areAdaChartPropsEqual,
 	buildInitOptions,
 	buildStyles,
 	createMemoryDataLoader,
 	ensureExtensionOverlays,
+	ensureVolumeOverlay,
 	normalizeKLineData,
-	resolveKChartProps,
+	resolveAdaChartProps,
 	resolvePeriod,
 	resolveSymbol,
 	sameKLineData,
 	structuralKey,
-} from "./k-chart-options";
+} from "./adachart-options";
+import { createFrameBarQueue } from "./adachart-stream";
+import { VOLUME_OVERLAY_INDICATOR } from "./adachart-window-config";
 
 /**
- * Flat colour / visibility knobs that `KChart` maps onto the nested
- * `klinecharts` {@link Styles} tree. They sit *below* the raw {@link KChartProps.styles}
+ * Flat colour / visibility knobs that `AdaChart` maps onto the nested
+ * `klinecharts` {@link Styles} tree. They sit *below* the raw {@link AdaChartProps.styles}
  * prop in precedence, so anything expressible here is also reachable there.
  *
- * 把 `KChart` 上扁平的颜色 / 显隐开关映射到嵌套的 `klinecharts` {@link Styles} 树。
- * 它们的优先级 *低于* 原始的 {@link KChartProps.styles} 属性，因此这里能表达的一切都
+ * 把 `AdaChart` 上扁平的颜色 / 显隐开关映射到嵌套的 `klinecharts` {@link Styles} 树。
+ * 它们的优先级 *低于* 原始的 {@link AdaChartProps.styles} 属性，因此这里能表达的一切都
  * 能在 `styles` 里表达。
  */
-export interface KChartConvenienceStyleProps {
+export interface AdaChartConvenienceStyleProps {
 	/**
 	 * Candle render kind.
 	 * 蜡烛渲染样式。
@@ -139,7 +143,7 @@ export interface KChartConvenienceStyleProps {
  * Chart-level event callbacks, each backed by `Chart.subscribeAction`.
  * 图表级事件回调，每个都由 `Chart.subscribeAction` 驱动。
  */
-export interface KChartEventProps {
+export interface AdaChartEventProps {
 	/** 缩放时触发。Fires while zooming. */
 	onZoom?: ActionCallback;
 	/** 平移滚动时触发。Fires while scrolling. */
@@ -160,22 +164,116 @@ export interface KChartEventProps {
 	onPaneDrag?: ActionCallback;
 }
 
-/** An indicator entry; `stack` overlays it onto a pane that already exists. 指标项；`stack` 将其叠加到已存在的面板上。 */
-export type KChartIndicator = (IndicatorCreate | string) & { stack?: boolean };
+/**
+ * `PaneIdConstants.CANDLE`: the id `klinecharts` gives the price pane, which it
+ * builds in the chart constructor. v10 does not export the constant, so it is
+ * spelled out here.
+ *
+ * It is needed because v10's `isStack` flag is *not* what shares a pane:
+ * `createIndicator` does `indicator.paneId ??= createId("indicator_pane_")`, so
+ * an indicator given no `paneId` always opens a pane of its own, and `isStack`
+ * only decides whether that pane's existing indicators are cleared first. An
+ * explicit `paneId` is the only way to land next to the candles.
+ *
+ * `PaneIdConstants.CANDLE`：`klinecharts` 赋予价格面板的 id，该面板在图表构造函数中就已建立。
+ * v10 未导出该常量，故在此写明。
+ *
+ * 之所以需要它：v10 的 `isStack` **并不**负责共用面板 —— `createIndicator` 里写的是
+ * `indicator.paneId ??= createId("indicator_pane_")`，因此没有 `paneId` 的指标必然自开一个面板，
+ * `isStack` 只决定是否先清空该面板已有的指标。想落到蜡烛旁边，只能显式给出 `paneId`。
+ */
+const CANDLE_PANE_ID = "candle_pane";
 
 /**
- * Everything `KChart` accepts. Each prop maps 1:1 onto a `klinecharts` v10
- * setting or instance method; the raw {@link KChartProps.styles},
- * {@link KChartProps.indicators}, {@link KChartProps.overlays} and
- * {@link KChartProps.onChartReady} props keep the whole library surface
+ * The y-axis `vol-main` is drawn against inside the candles' pane, and the share
+ * of that pane its bars keep for themselves.
+ *
+ * A count cannot be drawn against a price, so the overlay needs an axis of its
+ * own. With none named, v10 hands every stacked indicator the pane's *default*
+ * axis — the candles' — and the engine takes an axis' range from the union of
+ * everything drawn against it, so a volume series there would stretch the range
+ * to cover both magnitudes and squeeze the candles flat. The axis carries no
+ * widget: the pane already labels the price, and a second column of numbers for
+ * a study nobody reads numerically is a column of numbers too many.
+ *
+ * The share is what keeps the two readable together. It is applied to the axis'
+ * *range* rather than to its `gap`, because the engine reads a gap of 1 or more
+ * as pixels and anything below 1 as a fraction of the data range, and a fraction
+ * cannot exceed 1 — the largest band a gap could express would leave the bars in
+ * the bottom half of the pane.
+ *
+ * `vol-main` 在蜡烛面板里对照的那条 y 轴，以及它的柱子从该面板中占为己有的比例。
+ *
+ * 计数无法用价格来画，因此叠加需要自己的一条轴。不指名时，v10 把每个叠加指标都交给面板的*默认*
+ * 轴 —— 也就是蜡烛那条 —— 而引擎把一条轴的范围取作画在其上的一切的并集，于是那里的成交量序列会把
+ * 范围撑到覆盖两种量级，把蜡烛压平。这条轴不带刻度组件：本条面板已经标注了价格，而一个没人当数字读
+ * 的指标再配一列数字，就是多出来的一列。
+ *
+ * 这个比例是让两者能一起读的东西。它作用在轴的*范围*上，而不是 `gap` 上：引擎把 1 及以上的 gap
+ * 读作像素、1 以下读作数据范围的比例，而比例无法超过 1 —— gap 能表达的最大 band，只会让柱子留在
+ * 面板的下半部分。
+ */
+const VOLUME_OVERLAY_Y_AXIS_ID = "vol_main_axis";
+const VOLUME_OVERLAY_PANE_SHARE = 0.2;
+
+/**
+ * The range the overlay's bars are drawn in: the same range the engine derived
+ * from the visible volumes, stretched so those bars occupy only
+ * {@link VOLUME_OVERLAY_PANE_SHARE} of the pane and the space above them belongs
+ * to the candles.
+ *
+ * `top: 0` and `bottom: 0` go with it — every axis is created from the pane's
+ * layout template, whose gap of `{top: 0.2, bottom: 0.1}` would pad this
+ * already-stretched range and float the bars off the bottom of the pane.
+ *
+ * 叠加的柱所在的那个范围：与引擎由可见成交量导出的范围相同，只是被拉长，使柱子只占面板的
+ * {@link VOLUME_OVERLAY_PANE_SHARE}，上方空间留给蜡烛。
+ *
+ * 与之配套的是 `top: 0`、`bottom: 0` —— 每条轴都按面板的布局模板创建，而模板的 gap
+ * `{top: 0.2, bottom: 0.1}` 会在这条已拉长的范围上再加内边距，把柱子抬离面板底部。
+ */
+const volumeOverlayAxisRange: AxisCreateRangeCallback = ({ defaultRange }) => {
+	// `from` is the overlay's zero: `minValue: 0` makes the engine's own minimum
+	// zero as well, so this states rather than changes it.
+	// `from` 是叠加的零点：`minValue: 0` 已让引擎自己的下界为零，所以这一行是把它写出来，而非改动它。
+	const from = 0;
+	const to = defaultRange.to / VOLUME_OVERLAY_PANE_SHARE;
+	const range = to - from;
+	return {
+		from,
+		to,
+		range,
+		realFrom: from,
+		realTo: to,
+		realRange: range,
+		displayFrom: from,
+		displayTo: to,
+		displayRange: range,
+	};
+};
+
+/**
+ * An indicator entry; `stack` shares the price pane instead of opening one.
+ * See {@link CANDLE_PANE_ID} for why that takes an explicit `paneId` in v10.
+ *
+ * 指标项；`stack` 使其与价格面板共用，而不是另开一个。为什么在 v10 里需要显式 `paneId`，
+ * 见 {@link CANDLE_PANE_ID}。
+ */
+export type AdaChartIndicator = (IndicatorCreate | string) & { stack?: boolean };
+
+/**
+ * Everything `AdaChart` accepts. Each prop maps 1:1 onto a `klinecharts` v10
+ * setting or instance method; the raw {@link AdaChartProps.styles},
+ * {@link AdaChartProps.indicators}, {@link AdaChartProps.overlays} and
+ * {@link AdaChartProps.onChartReady} props keep the whole library surface
  * reachable, so the wrapper never becomes the reason a feature is unavailable.
  *
- * `KChart` 接受的全部属性。每个属性都与 `klinecharts` v10 的某个配置或实例方法一一对应；
- * 原始的 {@link KChartProps.styles}、{@link KChartProps.indicators}、
- * {@link KChartProps.overlays} 与 {@link KChartProps.onChartReady} 让库的全部能力始终可达，
+ * `AdaChart` 接受的全部属性。每个属性都与 `klinecharts` v10 的某个配置或实例方法一一对应；
+ * 原始的 {@link AdaChartProps.styles}、{@link AdaChartProps.indicators}、
+ * {@link AdaChartProps.overlays} 与 {@link AdaChartProps.onChartReady} 让库的全部能力始终可达，
  * 封装层不会成为某个功能无法使用的原因。
  */
-export interface KChartProps extends KChartConvenienceStyleProps, KChartEventProps {
+export interface AdaChartProps extends AdaChartConvenienceStyleProps, AdaChartEventProps {
 	// ------------------------------------------------------------------ data
 	/**
 	 * Candles to render. `timestamp` is epoch **milliseconds**, matching what
@@ -188,10 +286,10 @@ export interface KChartProps extends KChartConvenienceStyleProps, KChartEventPro
 	data?: KLineData[];
 	/**
 	 * Advanced: supply your own {@link DataLoader} (history paging, WebSocket
-	 * streaming). When present it wins over {@link KChartProps.data}.
+	 * streaming). When present it wins over {@link AdaChartProps.data}.
 	 *
 	 * 进阶：提供自定义 {@link DataLoader}（历史翻页、WebSocket 流）。提供时优先于
-	 * {@link KChartProps.data}。
+	 * {@link AdaChartProps.data}。
 	 */
 	dataLoader?: DataLoader;
 	/**
@@ -201,7 +299,7 @@ export interface KChartProps extends KChartConvenienceStyleProps, KChartEventPro
 	symbol?: Partial<SymbolInfo>;
 	/**
 	 * Bar period, e.g. `{ type: "minute", span: 5 }`. Also the seed for
-	 * {@link KChartProps.symbolTicker} / `periodType` / `periodSpan` shortcuts.
+	 * {@link AdaChartProps.symbolTicker} / `periodType` / `periodSpan` shortcuts.
 	 * K 线周期，如 `{ type: "minute", span: 5 }`。
 	 */
 	period?: Partial<Period>;
@@ -245,15 +343,15 @@ export interface KChartProps extends KChartConvenienceStyleProps, KChartEventPro
 	 */
 	timezone?: string;
 	/**
-	 * Colour preset merged *under* {@link KChartProps.styles}.
-	 * 配色预设，优先级*低于* {@link KChartProps.styles}。
+	 * Colour preset merged *under* {@link AdaChartProps.styles}.
+	 * 配色预设，优先级*低于* {@link AdaChartProps.styles}。
 	 */
 	theme?: "light" | "dark";
 	/**
 	 * The full `klinecharts` style tree — the primary styling lever. Deep-merged
-	 * over the {@link KChartProps.theme} preset and the convenience props.
+	 * over the {@link AdaChartProps.theme} preset and the convenience props.
 	 *
-	 * 完整的 `klinecharts` 样式树 —— 主要的样式控制入口。在 {@link KChartProps.theme}
+	 * 完整的 `klinecharts` 样式树 —— 主要的样式控制入口。在 {@link AdaChartProps.theme}
 	 * 预设与便捷 props 之上做深合并。
 	 */
 	styles?: DeepPartial<Styles>;
@@ -280,7 +378,7 @@ export interface KChartProps extends KChartConvenienceStyleProps, KChartEventPro
 	 * 按顺序创建的指标。字符串即指标名；对象可携带 `paneId`、`calcParams`、`yAxisId` 等。
 	 * 扩展画线工具会自动注册，但自定义*指标*仍需先通过 `registerIndicator` 注册再在此引用。
 	 */
-	indicators?: KChartIndicator[];
+	indicators?: AdaChartIndicator[];
 	/**
 	 * Pane geometry (id, height, order, drag, state). Applied with
 	 * `Chart.setPaneOptions`.
@@ -290,10 +388,10 @@ export interface KChartProps extends KChartConvenienceStyleProps, KChartEventPro
 	/**
 	 * Overlays (drawing tools) to instantiate. Names cover the built-in set and
 	 * every `@klinecharts/extension` overlay (rect, gannBox, fibonacciSpiral, …),
-	 * which `KChart` registers on mount.
+	 * which `AdaChart` registers on mount.
 	 *
 	 * 要实例化的画线工具。名称涵盖内置集合与全部 `@klinecharts/extension` 工具
-	 * （rect、gannBox、fibonacciSpiral 等），`KChart` 会在挂载时注册它们。
+	 * （rect、gannBox、fibonacciSpiral 等），`AdaChart` 会在挂载时注册它们。
 	 */
 	overlays?: Array<OverlayCreate | string>;
 
@@ -330,9 +428,9 @@ export interface KChartProps extends KChartConvenienceStyleProps, KChartEventPro
 	onChartReady?: (chart: Chart) => void;
 }
 
-/** Keys of {@link KChartProps} that carry a default in {@link KCHART_DEFAULTS}. 在 {@link KCHART_DEFAULTS} 中带默认值的 {@link KChartProps} 键。 */
-export type KChartResolvedProps = KChartProps & {
-	[K in keyof typeof KCHART_DEFAULTS]-?: NonNullable<KChartProps[K]>;
+/** Keys of {@link AdaChartProps} that carry a default in {@link ADACHART_DEFAULTS}. 在 {@link ADACHART_DEFAULTS} 中带默认值的 {@link AdaChartProps} 键。 */
+export type AdaChartResolvedProps = AdaChartProps & {
+	[K in keyof typeof ADACHART_DEFAULTS]-?: NonNullable<AdaChartProps[K]>;
 };
 
 /** Map each event prop onto the matching `klinecharts` `ActionType`. 把每个事件 prop 映射到对应的 `klinecharts` `ActionType`。 */
@@ -346,7 +444,7 @@ const ACTIONS = {
 	onIndicatorTooltipFeatureClick: "onIndicatorTooltipFeatureClick",
 	onCrosshairFeatureClick: "onCrosshairFeatureClick",
 	onPaneDrag: "onPaneDrag",
-} as const satisfies Record<keyof KChartEventProps, ActionType>;
+} as const satisfies Record<keyof AdaChartEventProps, ActionType>;
 
 const ACTION_KEYS = Object.keys(ACTIONS) as Array<keyof typeof ACTIONS>;
 
@@ -372,14 +470,14 @@ const ACTION_KEYS = Object.keys(ACTIONS) as Array<keyof typeof ACTIONS>;
  * 样式、语言、时区与行为变更都通过实例 setter 增量下发，因此改色不会重建图表；只有指标、
  * 画线或面板的*组合*变化才会重建这些对象。
  */
-function KChart(props: KChartProps) {
-	const resolved = useMemo(() => resolveKChartProps(props), [props]);
+function AdaChart(props: AdaChartProps) {
+	const resolved = useMemo(() => resolveAdaChartProps(props), [props]);
 	const data = useMemo(() => normalizeKLineData(resolved.data), [resolved.data]);
 
 	/** Latest dataset, read synchronously by the {@link DataLoader} on `init`. */
 	const dataRef = useRef<KLineData[]>(data);
-	/** The real-time push callback handed back by `subscribeBar`. */
-	const pushRef = useRef<((bar: KLineData) => void) | null>(null);
+	const pushQueue = useMemo(() => createFrameBarQueue(), []);
+	// ponytail: distinct bars still recalc full history until klinecharts supports incremental indicators.
 	/** Ids of indicators/overlays the reconcile effects currently own. */
 	const indicatorIdsRef = useRef<string[]>([]);
 	const overlayIdsRef = useRef<string[]>([]);
@@ -409,22 +507,31 @@ function KChart(props: KChartProps) {
 	const { setContainer, engine } = useEngineMount<Chart>({
 		create: (container) => {
 			ensureExtensionOverlays();
+			ensureVolumeOverlay();
 
 			const chart = init(container, buildInitOptions(latestRef.current.resolved));
 			if (!chart) return null;
 
 			const external = latestRef.current.resolved.dataLoader;
+			const memory = createMemoryDataLoader({
+				getBars: () => dataRef.current,
+				onSubscribe: pushQueue.setPush,
+				onUnsubscribe: pushQueue.clear,
+			});
 			chart.setDataLoader(
-				external ??
-					createMemoryDataLoader({
-						getBars: () => dataRef.current,
-						onSubscribe: (push) => {
-							pushRef.current = push;
+					external
+						? {
+							getBars: (params) => external.getBars(params),
+							subscribeBar: (params) => {
+								pushQueue.setPush(params.callback);
+								return external.subscribeBar?.({ ...params, callback: pushQueue.push });
+							},
+							unsubscribeBar: (params) => {
+								pushQueue.clear();
+							return external.unsubscribeBar?.(params);
 						},
-						onUnsubscribe: () => {
-							pushRef.current = null;
-						},
-					}),
+					}
+					: memory,
 			);
 			// symbol + period are what let the loader's init request fire at all.
 			// symbol 与 period 是 loader 的 init 请求得以触发的前提。
@@ -460,7 +567,7 @@ function KChart(props: KChartProps) {
 			unsubscribeActionsRef.current = null;
 			indicatorIdsRef.current = [];
 			overlayIdsRef.current = [];
-			pushRef.current = null;
+			pushQueue.clear();
 			firstDataRunRef.current = true;
 			prevDataRef.current = [];
 			dispose(chart);
@@ -544,8 +651,8 @@ function KChart(props: KChartProps) {
 		}
 
 		const touched = patch.kind === "append" ? patch.items : [patch.item];
-		for (const bar of touched) pushRef.current?.(bar);
-	}, [data, resolved.dataLoader, engine]);
+		for (const bar of touched) pushQueue.push(bar);
+	}, [data, resolved.dataLoader, engine, pushQueue]);
 
 	// Indicators: reconciled whenever their structural signature changes. The
 	// list itself is read through `latestRef`, so the effect depends only on the
@@ -567,8 +674,42 @@ function KChart(props: KChartProps) {
 				continue;
 			}
 			const { stack, ...create } = entry;
-			const id = chart.createIndicator(create as IndicatorCreate, stack ?? false);
+			// A stacked entry asks for the price pane by id — v10 will not share a
+			// pane otherwise, and `isStack` only keeps the pane's existing
+			// indicators. An explicit `paneId` on the entry still wins.
+			// 叠加项按 id 指定价格面板 —— 否则 v10 不会共用面板，而 `isStack` 只保留该面板
+			// 已有的指标。条目上显式给出的 `paneId` 依然优先。
+			const stacked = stack ?? false;
+			// The volume overlay is the one stacked study that must *not* share the
+			// candles' axis; see {@link VOLUME_OVERLAY_Y_AXIS_ID}.
+			// 成交量叠加是唯一一个不得与蜡烛共用坐标轴的叠加指标；见
+			// {@link VOLUME_OVERLAY_Y_AXIS_ID}。
+			const overlay = stacked && create.name === VOLUME_OVERLAY_INDICATOR;
+			const id = chart.createIndicator(
+				(stacked
+					? {
+							paneId: CANDLE_PANE_ID,
+							...(overlay ? { yAxisId: VOLUME_OVERLAY_Y_AXIS_ID } : {}),
+							...create,
+						}
+					: create) as IndicatorCreate,
+				stacked,
+			);
 			if (id) created.push(id);
+			// The band is applied after the indicator, never with it:
+			// `overrideYAxis` returns early when the axis it names is not there yet,
+			// and that axis is created along with the indicator above.
+			// band 在指标之后装、绝不随它一起：`overrideYAxis` 在所指的轴尚不存在时会提前返回，
+			// 而那条轴正是随上面的指标一同建立的。
+			if (id && overlay) {
+				chart.overrideYAxis({
+					id: VOLUME_OVERLAY_Y_AXIS_ID,
+					paneId: CANDLE_PANE_ID,
+					needWidget: false,
+					gap: { top: 0, bottom: 0 },
+					createRange: volumeOverlayAxisRange,
+				});
+			}
 		}
 		indicatorIdsRef.current = created;
 	}, [indicatorKey, engine]);
@@ -617,14 +758,14 @@ function KChart(props: KChartProps) {
 	);
 }
 
-const KChartMemo = memo(KChart, areKChartPropsEqual);
+const AdaChartMemo = memo(AdaChart, areAdaChartPropsEqual);
 
 /**
- * The memoized Wrapper, under both export forms: `KChart` entry files
+ * The memoized Wrapper, under both export forms: `AdaChart` entry files
  * default-export it so a consumer can pick either import style.
  *
  * 记忆化后的 Wrapper，两种导出形式都给：入口文件同时 default 导出，
  * 调用方两种 import 写法都能用。
  */
-export { KChartMemo as KChart };
-export default KChartMemo;
+export { AdaChartMemo as AdaChart };
+export default AdaChartMemo;

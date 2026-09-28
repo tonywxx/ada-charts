@@ -8,9 +8,9 @@ import { build } from "vite";
  * Two library passes, because the two groups of Wrappers cannot share one
  * dependency policy.
  *
- * `TChart` and `KChart` externalise their engines: a consumer resolves
+ * `TChart` and `AdaChart` externalise their engines: a consumer resolves
  * `lightweight-charts` and `klinecharts` itself, and `@klinecharts/extension`
- * needs the same v10 instance as `KChart`.
+ * needs the same v10 instance as `AdaChart`.
  *
  * `KChartPro` is the exception. `@klinecharts/pro` is compiled against the v9
  * runtime, and ADR-0002's `resolveId` redirect does **not** survive
@@ -22,8 +22,8 @@ import { build } from "vite";
  *
  * 两遍库构建，因为两组 Wrapper 没法共用同一套依赖策略。
  *
- * `TChart` 与 `KChart` 把引擎设为 external：由下游自己解析 `lightweight-charts` 与
- * `klinecharts`，而 `@klinecharts/extension` 必须与 `KChart` 用同一个 v10 实例。
+ * `TChart` 与 `AdaChart` 把引擎设为 external：由下游自己解析 `lightweight-charts` 与
+ * `klinecharts`，而 `@klinecharts/extension` 必须与 `AdaChart` 用同一个 v10 实例。
  *
  * `KChartPro` 是例外。`@klinecharts/pro` 按 v9 运行时编译，而 ADR-0002 里的
  * `resolveId` 重定向**撑不过** `vite build` —— 本文件的第一版产物就把 Pro 的
@@ -40,7 +40,7 @@ const v9Entry = requireFromRoot.resolve("klinecharts-v9/dist/index.esm.js");
 
 const ENTRIES = {
 	"t-chart": "src/components/lightweight-charts/TChart.tsx",
-	"k-chart": "src/components/klinecharts/KChart.tsx",
+	"adachart": "src/components/adachart/AdaChart.tsx",
 };
 
 const PRO_ENTRY = { "k-chart-pro": "src/components/klinecharts-pro/KChartPro.tsx" };
@@ -49,14 +49,18 @@ const TPRO_ENTRY = {
 	"t-chart-pro": "src/components/lightweight-charts-pro/TChartPro.tsx",
 };
 
+const ADA_PRO_ENTRY = {
+	"adachart-pro": "src/components/adachart-pro/AdaChartPro.tsx",
+};
+
 const isReact = (id) => id === "react" || id === "react-dom" || /^react(-dom)\//.test(id);
 const isEngine = (id) => id === "lightweight-charts" || id === "klinecharts";
 
 /**
  * @param {Record<string, string>} entry
- * @param {{ external: (id: string) => boolean, alias?: boolean, first?: boolean }} policy
+ * @param {{ external: (id: string) => boolean, alias?: boolean, first?: boolean, cssFileName?: string }} policy
  */
-async function libPass(entry, { external, alias, first }) {
+async function libPass(entry, { external, alias, first, cssFileName }) {
 	await build({
 		root,
 		logLevel: "info",
@@ -79,6 +83,12 @@ async function libPass(entry, { external, alias, first }) {
 				),
 				formats: ["es"],
 				fileName: (_format, entryName) => `${entryName}.js`,
+				// Vite names a lib pass's CSS after package.json's `name` unless told
+				// otherwise, so a later pass with its own stylesheet would silently
+				// overwrite the earlier pass's `ada-charts.css`.
+				// 除非另行指定，Vite 会用 package.json 的 `name` 命名某一遍的 CSS，因此后面
+				// 带着自己样式表的那一遍会静默覆盖前一遍的 `ada-charts.css`。
+				...(cssFileName ? { cssFileName } : {}),
 			},
 			rollupOptions: { external },
 		},
@@ -96,3 +106,14 @@ await libPass(PRO_ENTRY, { external: isReact, alias: true });
 // `TChartPro` 把 `lightweight-charts-drawing` 打包进来，但图表库本身必须外链：画线要挂在
 // `TChart` 建的那个 `IChartApi` 上，多带一份库就挂不上去。
 await libPass(TPRO_ENTRY, { external: (id) => isReact(id) || id === "lightweight-charts" });
+// `AdaChartPro` is built on `AdaChart`, i.e. on plain v10 plus React, so it
+// follows the entry pass's policy — with one caveat: it ships its own
+// stylesheet for the toolbar and watermark, which must not land on the name
+// `KChartPro`'s pass already used.
+// `AdaChartPro` 构建在 `AdaChart` 之上，也就是纯 v10 加 React，因此沿用入口那一遍的
+// 策略 —— 只有一点不同：它自带工具栏与水印的样式表，不能落在 `KChartPro` 那一遍
+// 已经用掉的文件名上。
+await libPass(ADA_PRO_ENTRY, {
+	external: (id) => isReact(id) || isEngine(id),
+	cssFileName: "adachart-pro",
+});

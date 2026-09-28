@@ -13,12 +13,12 @@ const dirname = typeof __dirname !== 'undefined' ? __dirname : path.dirname(file
 /**
  * `@klinecharts/pro` is compiled against the KLineChart v9 runtime (`loadMore`,
  * `applyMoreData`, the v9 `createIndicator` signature, the string enums), while
- * `KChart` and `@klinecharts/extension` need v10. Both versions are installed
+ * `AdaChart` and `@klinecharts/extension` need v10. Both versions are installed
  * (`klinecharts` = v10, `klinecharts-v9` = v9); this plugin redirects only the
  * Pro package's own `klinecharts` import to the v9 copy, so the two coexist.
  *
  * `@klinecharts/pro` 基于 KLineChart v9 运行时编译（`loadMore`、`applyMoreData`、v9 的
- * `createIndicator` 签名、字符串枚举），而 `KChart` 与 `@klinecharts/extension` 需要 v10。
+ * `createIndicator` 签名、字符串枚举），而 `AdaChart` 与 `@klinecharts/extension` 需要 v10。
  * 两个版本都已安装（`klinecharts` = v10，`klinecharts-v9` = v9）；本插件仅把 Pro 包自身的
  * `klinecharts` 引用重定向到 v9 副本，使两者共存。
  */

@@ -1,28 +1,42 @@
 /**
- * The benchmark page: mounts either Pro Wrapper into a fixed container and
- * exposes the measurements a Playwright driver asks for. It renders nothing on
- * its own — `scripts/bench-charts.mjs` decides the matrix and reads the results.
+ * The benchmark page: mounts any of the three Pro Wrappers into a fixed
+ * container and exposes the measurements a Playwright driver asks for. It
+ * renders nothing on its own — `scripts/bench-charts.mjs` decides the matrix and
+ * reads the results.
  *
- * 基准页面：把任一 Pro Wrapper 挂进固定尺寸容器，并把 Playwright 驱动要读的测量值
- * 挂到 `window.__perf`。它自己不渲染任何东西 —— 矩阵由 `scripts/bench-charts.mjs`
- * 决定、结果也由它读取。
+ * 基准页面：把三个 Pro Wrapper 中的任意一个挂进固定尺寸容器，并把 Playwright 驱动要读的
+ * 测量值挂到 `window.__perf`。它自己不渲染任何东西 —— 矩阵由
+ * `scripts/bench-charts.mjs` 决定、结果也由它读取。
  */
 
 import type { KLineChartPro } from "@klinecharts/pro";
-// Resolves to klinecharts **v9** inside this bundle: the perf build carries the
-// same alias the library build uses, because `@klinecharts/pro` is compiled
-// against v9. That is deliberate — these registries are then exactly the ones
-// `KChartPro` draws from, which is what makes the feature counts comparable to
-// `TChartPro`'s. TypeScript sees v10's declarations, but both versions export
-// the same two functions.
-// 在本包里解析到 klinecharts **v9**：性能构建带着与库构建相同的别名，因为
-// `@klinecharts/pro` 是按 v9 编译的。这是刻意的 —— 这两个注册表正是 `KChartPro`
-// 取用的那两份，功能数量才与 `TChartPro` 可比。TypeScript 看到的是 v10 的声明，
-// 但两个版本导出的是同样这两个函数。
+// Two klinecharts versions live on this page, so the registries have to be asked
+// for by name — reading them from a bare `klinecharts` would silently mean
+// whichever version the resolver happened to pick.
+//
+// `klinecharts-v9` is what `KChartPro` draws from, so it is the only honest
+// source for that column's counts. Bare `klinecharts` is v10, which is what
+// `AdaChartPro` draws from (via `AdaChart`), so it is asked separately. Keeping
+// the two apart is what makes the three feature counts comparable instead of
+// accidentally identical.
+//
+// 本页同时存在两个 klinecharts 版本，因此注册表必须按名索取 —— 从裸 `klinecharts` 读会
+// 静默地取到解析器恰好选中的那一版。
+//
+// `klinecharts-v9` 是 `KChartPro` 取用的那一份，也就是它那一列数字唯一诚实的来源；裸
+// `klinecharts` 是 v10，`AdaChartPro` 经由 `AdaChart` 取用的正是它，所以单独去问。把两者
+// 分开，三组功能数量才是可比的，而不是碰巧相等。
 import { getSupportedIndicators, getSupportedOverlays } from "klinecharts";
+import {
+	getSupportedIndicators as getSupportedIndicatorsV9,
+	getSupportedOverlays as getSupportedOverlaysV9,
+} from "klinecharts-v9";
 import { getToolRegistry } from "lightweight-charts-drawing";
 import { createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import AdaChartPro, {
+	type AdaChartProApi,
+} from "../src/components/adachart-pro/AdaChartPro";
 import KChartPro from "../src/components/klinecharts-pro/KChartPro";
 import TChartPro, {
 	type TChartProApi,
@@ -30,9 +44,17 @@ import TChartPro, {
 } from "../src/components/lightweight-charts-pro/TChartPro";
 import { TCHARTPRO_INDICATORS } from "../src/components/lightweight-charts-pro/t-chart-pro-options";
 import { continueCandles, makeCandles, type PerfCandle } from "./dataset";
-import { kChartFeed, PERF_PERIOD, PERF_SYMBOL, tChartFeed } from "./feeds";
+import {
+	adaChartProFeed,
+	kChartFeed,
+	PERF_PERIOD,
+	PERF_PERIOD_V10,
+	PERF_SYMBOL,
+	PERF_SYMBOL_V10,
+	tChartFeed,
+} from "./feeds";
 
-export type Engine = "t-chart-pro" | "k-chart-pro";
+export type Engine = "t-chart-pro" | "k-chart-pro" | "ada-chart-pro";
 
 export interface MountOptions {
 	engine: Engine;
@@ -408,6 +430,58 @@ async function mount(options: MountOptions): Promise<MountResult> {
 		);
 	}
 
+	if (options.engine === "ada-chart-pro") {
+		const handle = adaChartProFeed(candles);
+		let api: AdaChartProApi | null = null;
+		root.render(
+			createElement(AdaChartPro, {
+				dataLoader: handle.feed,
+				symbol: PERF_SYMBOL_V10,
+				period: PERF_PERIOD_V10,
+				autoSize: false,
+				width: WIDTH,
+				height: HEIGHT,
+				drawingBarVisible: true,
+				mainIndicators: indicators.main,
+				subIndicators: indicators.sub,
+				onChartReady: (instance: AdaChartProApi) => {
+					api = instance;
+					markEngineReady(performance.now() - started);
+				},
+			}),
+		);
+		live = {
+			engine: options.engine,
+			root,
+			container,
+			feed: handle,
+			tChartApi: null,
+			lastCandle,
+		};
+		const engineReadyMs = await engineReady;
+		// The same readiness test the `TChartPro` branch uses, reached through
+		// v10's own accessor instead of an `ISeriesApi`: the bars are on screen
+		// exactly when the chart's data list holds them all. `AdaChartPro` does not
+		// publish the underlying instance until `onChartReady`, so `api` may still be
+		// `null` on the first poll — hence the optional chain.
+		// 与 `TChartPro` 分支同一个就绪判定，只是改用 v10 自己的访问器而非 `ISeriesApi`：
+		// 图表的 data list 持有全部 K 线时，它们就在屏幕上了。`AdaChartPro` 要等到
+		// `onChartReady` 才交出底层实例，因此首轮轮询时 `api` 可能仍是 `null` —— 故用可选链。
+		await waitUntil(
+			() => (api?.chart()?.getDataList().length ?? 0) >= options.bars,
+		);
+		await nextFrame();
+		const firstPaintMs = performance.now() - started;
+		return finish(
+			options,
+			engineReadyMs,
+			firstPaintMs,
+			baselineHeap,
+			container,
+			"series-data",
+		);
+	}
+
 	const handle = kChartFeed(candles);
 	// Observing starts before render: the spinner this engine shows while history
 	// is in flight is the only data-true signal it publishes.
@@ -583,13 +657,18 @@ const round3 = (value: number) => Math.round(value * 1000) / 1000;
 const api: HarnessApi = {
 	ready: true,
 	// Counts read from the libraries' own registries rather than a hand-kept list,
-	// so the report cannot drift from what the code actually offers.
-	// 数量取自两个库自己的注册表，而不是手维护的清单，因此报告不会和代码实际提供的东西脱节。
+	// so the report cannot drift from what the code actually offers. Each engine is
+	// asked in its own vocabulary, and the two klinecharts columns read two
+	// different versions — see the import note above.
+	// 数量取自各库自己的注册表，而不是手维护的清单，因此报告不会和代码实际提供的东西脱节。
+	// 每个引擎按自己的词汇去问，两个 klinecharts 列读的是两个不同版本 —— 见上方的 import 说明。
 	features: () => ({
 		tChartProIndicators: TCHARTPRO_INDICATORS.length,
 		tChartProDrawingTools: getToolRegistry().getAll().length,
-		kChartProIndicators: getSupportedIndicators().length,
-		kChartProOverlays: getSupportedOverlays().length,
+		kChartProIndicators: getSupportedIndicatorsV9().length,
+		kChartProOverlays: getSupportedOverlaysV9().length,
+		adaChartProIndicators: getSupportedIndicators().length,
+		adaChartProOverlays: getSupportedOverlays().length,
 	}),
 	frameMs: measureFrameMs,
 	mount,

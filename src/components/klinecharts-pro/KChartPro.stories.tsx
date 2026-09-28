@@ -1,16 +1,16 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import KChartPro, { type KChartProProps } from "./KChartPro";
 import { KCHARTPRO_DEFAULTS, KCHARTPRO_DEFAULT_PERIODS } from "./k-chart-pro-options";
-import { KCHART_BUILT_IN_INDICATORS } from "../klinecharts/k-chart-options";
+import { ADACHART_BUILT_IN_INDICATORS } from "../adachart/adachart-options";
 
 /**
- * `KChartPro` draws entirely from **live** OKX data: unlike `KChart`, the Pro
+ * `KChartPro` draws entirely from **live** OKX data: unlike `AdaChart`, the Pro
  * layer pulls its own candles through the {@link OkxDatafeed}, so a story only
  * configures the chart — the market data arrives on its own, exactly like a real
  * trading terminal. When the network is unavailable the feed falls back to the
  * committed snapshot instead of failing.
  *
- * `KChartPro` 完全使用**实时** OKX 数据：与 `KChart` 不同，Pro 层通过 {@link OkxDatafeed}
+ * `KChartPro` 完全使用**实时** OKX 数据：与 `AdaChart` 不同，Pro 层通过 {@link OkxDatafeed}
  * 自行拉取 K 线，因此 story 只需配置图表 —— 行情会像真实交易终端那样自行到达。网络不可用时，
  * 数据源回退到提交进仓库的快照而非报错。
  */
@@ -18,8 +18,8 @@ import { KCHART_BUILT_IN_INDICATORS } from "../klinecharts/k-chart-options";
 const CONTROLS = {
 	theme: { control: "inline-radio", options: ["light", "dark"] },
 	locale: { control: "inline-radio", options: ["en-US", "zh-CN"] },
-	mainIndicators: { control: "check", options: [...KCHART_BUILT_IN_INDICATORS] },
-	subIndicators: { control: "check", options: [...KCHART_BUILT_IN_INDICATORS] },
+	mainIndicators: { control: "check", options: [...ADACHART_BUILT_IN_INDICATORS] },
+	subIndicators: { control: "check", options: [...ADACHART_BUILT_IN_INDICATORS] },
 } as const;
 
 /** Props that carry objects or callbacks, so no widget fits them. 携带对象或回调、不适合任何控件的属性。 */

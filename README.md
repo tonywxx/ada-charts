@@ -15,9 +15,15 @@ A chart/visualization component library for displaying data in downstream projec
 | Component | Path | Description |
 | --- | --- | --- |
 | `TChart` | `src/components/lightweight-charts/TChart.tsx` | Declarative wrapper over `lightweight-charts` v5: candlestick, line, area, bar, histogram and baseline series, with optional volume overlay, EMA overlay, reference lines, watermark, markers and full axis/interaction control. |
-| `TChartPro` | `src/components/lightweight-charts-pro/TChartPro.tsx` | The same engine with the `KChartPro` feature set on top: toolbar (symbol search, bar sizes, indicator picker, theme toggle), drawing tools via `lightweight-charts-drawing` (68 tool types, magnet, lock, undo, clear, save/restore through `drawings`), all 27 of `KChartPro`'s indicator studies, computed here and plotted as ordinary series, `Datafeed`-driven live data and a timezone-aware axis. |
-| `KChart` | `src/components/klinecharts/KChart.tsx` | Declarative wrapper over `klinecharts` v10, including its overlay and indicator catalogue. |
-| `KChartPro` | `src/components/klinecharts-pro/KChartPro.tsx` | Declarative wrapper over `@klinecharts/pro`: toolbar, drawing bar, indicators, `Datafeed` pipeline and watermark out of the box. |
+| `TChartPro` | `src/components/lightweight-charts-pro/TChartPro.tsx` | **Frozen.** The same engine with the `KChartPro` feature set on top: toolbar (symbol search, bar sizes, indicator picker, theme toggle), drawing tools via `lightweight-charts-drawing` (68 tool types, magnet, lock, undo, clear, save/restore through `drawings`), all 27 of `KChartPro`'s indicator studies, computed here and plotted as ordinary series, `Datafeed`-driven live data and a timezone-aware axis. |
+| `AdaChart` | `src/components/adachart/AdaChart.tsx` | Declarative wrapper over `klinecharts` v10, including its overlay and indicator catalogue. |
+| `AdaChartPro` | `src/components/adachart-pro/AdaChartPro.tsx` | The v10-native Pro layer, built on `AdaChart`: toolbar (symbol search, periods, indicator picker, drawing palette, theme toggle), watermark and a `DataLoader`-driven live pipeline out of the box — with the indicator work left to the engine. |
+| `KChartPro` | `src/components/klinecharts-pro/KChartPro.tsx` | **Frozen.** Declarative wrapper over `@klinecharts/pro`: toolbar, drawing bar, indicators, `Datafeed` pipeline and watermark out of the box. |
+
+`AdaChart` and `AdaChartPro` are the components under active development. `TChartPro`
+and `KChartPro` are kept, built and exported for downstream imports and for the
+performance comparison in `docs/perf/chart-pro-comparison.md`, but receive no new
+features — see [ADR-0003](docs/adr/0003-adachart-pro-is-the-v10-native-pro-layer.md).
 
 Props are documented bilingually (English + 中文) in JSDoc, which Storybook's Autodocs
 extracts into the ArgsTable; defaults live in `TCHART_DEFAULTS` in `t-chart-options.ts`

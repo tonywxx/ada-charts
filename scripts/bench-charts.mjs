@@ -34,7 +34,7 @@ const SIZES = QUICK ? [500, 2_000] : [500, 2_000, 10_000, 30_000];
 const REPEATS = QUICK
 	? { 500: 1, 2000: 1 }
 	: { 500: 3, 2000: 3, 10000: 2, 30000: 2 };
-const ENGINES = ["t-chart-pro", "k-chart-pro"];
+const ENGINES = ["t-chart-pro", "k-chart-pro", "ada-chart-pro"];
 const INDICATOR_MODES = [false, true];
 /** The sizes the streaming and interaction scenarios run at. 流式与交互场景使用的规模。 */
 const LIVE_SIZES = QUICK ? [2_000] : [2_000, 30_000];
@@ -200,21 +200,52 @@ async function runLive(page) {
 // ------------------------------------------------------------------------ main
 
 /**
+ * Redirects `klinecharts` to v9 *only* for the imports made from inside
+ * `@klinecharts/pro`, which is compiled against that runtime.
+ *
+ * The page now carries both versions side by side: `KChartPro` needs v9, while
+ * `AdaChartPro` — built on `AdaChart`, i.e. on plain v10 — needs v10, and so does
+ * `@klinecharts/extension`. A blanket alias cannot express that split; it was
+ * harmless only while nothing on the page imported v10.
+ *
+ * 只把 `@klinecharts/pro` 发起的 `klinecharts` 引用重定向到 v9 —— 该包就是按那个运行时编译的。
+ *
+ * 页面上现在同时存在两个版本：`KChartPro` 需要 v9，而构建在 `AdaChart`（也就是纯 v10）之上的
+ * `AdaChartPro` 需要 v10，`@klinecharts/extension` 同样需要 v10。全局别名表达不了这种分裂；
+ * 它在「页面上没有任何东西引用 v10」时才是无害的。
+ */
+function klinechartsProUsesV9(v9Entry) {
+	return {
+		name: "klinecharts-pro-uses-v9",
+		enforce: "pre",
+		resolveId(source, importer) {
+			if (
+				source === "klinecharts" &&
+				importer &&
+				/@klinecharts[\\/]pro[\\/]/.test(importer)
+			) {
+				return v9Entry;
+			}
+			return null;
+		},
+	};
+}
+
+/**
  * A production bundle of the perf page, then a static server for it.
  *
  * Measuring against `vite dev` would be measuring the wrong thing: React's
  * development build is several times more expensive to render, and `TChartPro`
  * does far more work inside React than `KChartPro` does — so dev mode would
- * systematically flatter the smaller wrapper. The bundle is built with the v9
- * alias the library build uses (`@klinecharts/pro` is compiled against v9 and
- * cannot take the v10 copy) and minified exactly as a consumer would ship it.
+ * systematically flatter the smaller wrapper. The bundle is built with the same
+ * v9/v10 split the library build uses and minified exactly as a consumer would
+ * ship it.
  *
  * 先给基准页打一份生产包，再用静态服务把它端出来。
  *
  * 拿 `vite dev` 测就是在测错的东西：React 的开发构建渲染成本高好几倍，而 `TChartPro`
  * 在 React 里做的事远多于 `KChartPro` —— 开发模式会系统性地偏袒更轻的那一层。打包用
- * 的是库构建同款的 v9 别名（`@klinecharts/pro` 按 v9 编译，吃不下 v10 的那份），
- * 并按下游实际发布的样子压缩。
+ * 的是与库构建相同的 v9/v10 分工，并按下游实际发布的样子压缩。
  */
 async function buildPerfBundle() {
 	const requireFromRoot = createRequire(path.join(root, "noop.cjs"));
@@ -223,12 +254,9 @@ async function buildPerfBundle() {
 		root,
 		configFile: false,
 		logLevel: "warn",
-		plugins: [react()],
+		plugins: [klinechartsProUsesV9(v9Entry), react()],
 		resolve: {
-			alias: [
-				{ find: /^klinecharts$/, replacement: v9Entry },
-				{ find: /^klinecharts-v9$/, replacement: v9Entry },
-			],
+			alias: [{ find: /^klinecharts-v9$/, replacement: v9Entry }],
 		},
 		build: {
 			outDir: "perf/dist",
@@ -266,10 +294,8 @@ async function main() {
 
 	try {
 		const { page, failures } = await openPerfPage(browser, url);
-		const features = await page.evaluate(() => window.__perf.features());
 		const frameMs = await page.evaluate(() => window.__perf.frameMs());
 		const memoryAvailable = (await page.evaluate(() => window.__perf.heapMB())) !== null;
-		console.log(`[perf] features: ${JSON.stringify(features)} frame ${frameMs}ms`);
 
 		// Warm-up: one throwaway mount per engine, so JIT and first-paint costs
 		// land outside the measured runs.
@@ -281,6 +307,19 @@ async function main() {
 			);
 		}
 		await page.evaluate(() => window.__perf.unmount());
+
+		// Read *after* the warm-up, not before: `AdaChartPro` is the one engine whose
+		// drawing tools come from `@klinecharts/extension`, and those register on
+		// first mount. Counting at page load would report its overlay set as the 16
+		// built-ins only — an undercount caused by call order rather than by the
+		// library, which is exactly the kind of drift the live registries exist to
+		// prevent.
+		// 在预热**之后**读取，而不是之前：`AdaChartPro` 是唯一一个画线工具来自
+		// `@klinecharts/extension` 的引擎，而那些工具在首次挂载时才注册。在页面加载时统计
+		// 只会把它的画线集合报成 16 个内置项 —— 这个少报由调用顺序造成，而非库本身，正是
+		// 「读实时注册表」本来要防的那种漂移。
+		const features = await page.evaluate(() => window.__perf.features());
+		console.log(`[perf] features: ${JSON.stringify(features)} frame ${frameMs}ms`);
 
 		console.log("[perf] mount matrix…");
 		const mounts = await runMatrix(page);
@@ -301,11 +340,25 @@ async function main() {
 		const bundles = {
 			tChartPro: sizeOf("dist/t-chart-pro.js"),
 			kChartPro: sizeOf("dist/k-chart-pro.js"),
+			adaChartPro: sizeOf("dist/adachart-pro.js"),
+			adaChartProCss: sizeOf("dist/adachart-pro.css"),
+			// Each engine is the other half of its Pro layer's delivered size: the
+			// `*Pro` artefacts externalise it, so a consumer resolves it once and
+			// shares it with the plain Wrapper. Both copies of klinecharts are listed
+			// because the page ships both (ADR-0002), and the v10 file is the one
+			// `AdaChartPro` hands to downstream.
+			// 每个引擎是自己那层 Pro 的另一半交付体积：`*Pro` 产物把它设为 external，由下游
+			// 解析一次并与普通 Wrapper 共用。两份 klinecharts 都列出，因为页面上两份都在
+			// （ADR-0002），而 v10 那份才是 `AdaChartPro` 交给下游的。
 			lightweightCharts: sizeOf(
 				"node_modules/lightweight-charts/dist/lightweight-charts.production.mjs",
 			),
 			klinechartsV9: sizeOf("node_modules/klinecharts-v9/dist/index.esm.js"),
-			proCss: sizeOf("dist/ada-charts.css"),
+			klinechartsV10: sizeOf("node_modules/klinecharts/dist/index.esm.js"),
+			// `@klinecharts/pro`'s stylesheet, named after the package because it is
+			// the only pass that lets Vite pick the name.
+			// `@klinecharts/pro` 的样式表；文件名取自包名，因为它是唯一让 Vite 自己命名的一遍。
+			kChartProCss: sizeOf("dist/ada-charts.css"),
 		};
 
 		const results = {

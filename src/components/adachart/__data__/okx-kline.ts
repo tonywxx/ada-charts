@@ -104,7 +104,7 @@ export function loadOkxKLines(bar: OkxBar): Promise<OkxKLineSet> {
 		}))
 		.catch((error: unknown) => {
 			console.warn(
-				"[KChart stories] OKX live data unavailable; using the committed snapshot.",
+				"[AdaChart stories] OKX live data unavailable; using the committed snapshot.",
 				error,
 			);
 			return fromSnapshot(bar);

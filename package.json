@@ -50,9 +50,9 @@
 			"types": "./dist/components/lightweight-charts/TChart.d.ts",
 			"import": "./dist/t-chart.js"
 		},
-		"./k-chart": {
-			"types": "./dist/components/klinecharts/KChart.d.ts",
-			"import": "./dist/k-chart.js"
+		"./adachart": {
+			"types": "./dist/components/adachart/AdaChart.d.ts",
+			"import": "./dist/adachart.js"
 		},
 		"./k-chart-pro": {
 			"types": "./dist/components/klinecharts-pro/KChartPro.d.ts",
@@ -62,7 +62,12 @@
 			"types": "./dist/components/lightweight-charts-pro/TChartPro.d.ts",
 			"import": "./dist/t-chart-pro.js"
 		},
-		"./k-chart-pro.css": "./dist/ada-charts.css"
+		"./adachart-pro": {
+			"types": "./dist/components/adachart-pro/AdaChartPro.d.ts",
+			"import": "./dist/adachart-pro.js"
+		},
+		"./k-chart-pro.css": "./dist/ada-charts.css",
+		"./adachart-pro.css": "./dist/adachart-pro.css"
 	},
 	"files": [
 		"dist"

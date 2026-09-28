@@ -70,8 +70,37 @@ export function parseOkxRows(rows: readonly string[][]): OkxCandle[] {
 		.sort((a, b) => a.timestamp - b.timestamp);
 }
 
-export function okxCandlesUrl(instId: string, bar: string, limit = OKX_HISTORY_LIMIT): string {
-	return `${OKX_CANDLES_URL}?instId=${encodeURIComponent(instId)}&bar=${encodeURIComponent(bar)}&limit=${limit}`;
+export function okxCandlesUrl(
+	instId: string,
+	bar: string,
+	limit = OKX_HISTORY_LIMIT,
+	page?: OkxPage,
+): string {
+	const query = [
+		`instId=${encodeURIComponent(instId)}`,
+		`bar=${encodeURIComponent(bar)}`,
+		`limit=${limit}`,
+	];
+	// OKX pages by timestamp, and its two keys point in opposite directions:
+	// `after` returns bars *earlier* than the given one, `before` returns bars
+	// *later*. Both are exclusive of the boundary bar.
+	//
+	// OKX 按时间戳分页，两个键指向相反方向：`after` 返回比给定时间*更早*的 K 线，
+	// `before` 返回*更晚*的。两者都不含边界那根。
+	if (page?.after !== undefined) query.push(`after=${page.after}`);
+	if (page?.before !== undefined) query.push(`before=${page.before}`);
+	return `${OKX_CANDLES_URL}?${query.join("&")}`;
+}
+
+/**
+ * A paging window, in OKX's own terms: `after` = earlier than this timestamp,
+ * `before` = later than it.
+ *
+ * 分页窗口，采用 OKX 自己的说法：`after` = 早于该时间戳，`before` = 晚于它。
+ */
+export interface OkxPage {
+	after?: number;
+	before?: number;
 }
 
 /**
@@ -108,14 +137,20 @@ export function okxSnapshotTimestamp(): number {
  * decides for itself whether a Snapshot answers. The two callers that did this
  * by hand had drifted on whether a non-finite row survives.
  *
+ * `page` is forwarded as-is: a paging caller knows which side of which bar it
+ * wants, and the answer is the same shape either way.
+ *
  * 一次请求、一次解析、不做兜底：失败就 reject，由各调用方自己决定是否改用 Snapshot。
  * 之前两处手写这份逻辑的调用方，在「非有限值的行是否保留」上已经不一致。
+ *
+ * `page` 原样下发：分页调用方清楚自己要的是哪一根 K 线哪一侧，而两者的答案形状相同。
  */
 export async function fetchOkxCandles(
 	instId: string,
 	bar: string,
+	page?: OkxPage,
 ): Promise<OkxCandle[]> {
-	const response = await fetch(okxCandlesUrl(instId, bar), {
+	const response = await fetch(okxCandlesUrl(instId, bar, OKX_HISTORY_LIMIT, page), {
 		signal: AbortSignal.timeout(OKX_REQUEST_TIMEOUT_MS),
 		headers: { Accept: "application/json" },
 	});

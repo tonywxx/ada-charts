@@ -24,6 +24,14 @@ _Avoid_: chart kind, series type, style
 A single price observation over a period, carrying open, high, low and close. The OHLC spelling is used when the four fields are meant individually.
 _Avoid_: K-line, bar (bar means the histogram series kind)
 
+**Open candle**:
+The candle for the period that has not ended yet. Its high, low, close and volume are still changing, and the source may revise them. The source states that a candle is open; the chart does not infer it from a clock.
+_Avoid_: realtime candle, live candle, forming bar
+
+**Closed candle**:
+A candle whose period has ended, so its four fields are final. Only a closed candle may be relied on as a record; an open candle describes activity so far and nothing more. A chart is wrong both ways round: treating an open candle as final freezes a number that was going to move, and treating a closed one as open lets a late revision overwrite history.
+_Avoid_: finished bar, confirmed candle, final candle
+
 **Bar size**:
 The time span one candle covers (`1D`, `4H`, `1m`). Distinct from the number of bars requested.
 _Avoid_: interval, timeframe, resolution
@@ -61,8 +69,12 @@ The coordinated colour and typography treatment applied across a chart's parts.
 _Avoid_: style (style means a single part's settings), skin
 
 **Live data**:
-Market data fetched from its source when the page is opened.
+Market data fetched from its source when the page is opened. It arrives once, as a set; a source that keeps pushing after that is supplying streaming data.
 _Avoid_: real data, remote data
+
+**Streaming data**:
+Market data a source keeps pushing while the page is open. It begins as a set fetched once — that part is live data — and continues as revisions to the newest candle. The chart never aggregates raw trades into candles itself; the aggregation is the source's, so both sides agree on where a period ends.
+_Avoid_: realtime data, push data, socket data
 
 **Snapshot**:
 A committed capture of previously fetched market data, used so docs still render offline. Always labelled with the time it was taken.

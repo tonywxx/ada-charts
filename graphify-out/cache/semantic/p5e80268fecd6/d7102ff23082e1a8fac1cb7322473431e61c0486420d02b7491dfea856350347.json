@@ -1,0 +1,1 @@
+{"nodes": [{"id": "docs_adr_0004", "label": "ADR-0004: Bar aggregation belongs to the source", "file_type": "document", "source_file": "docs/adr/0004-bar-aggregation-belongs-to-the-source.md", "rationale": "Decision that the chart does not aggregate raw trades; it relies on source aggregation."}], "edges": [], "hyperedges": []}
