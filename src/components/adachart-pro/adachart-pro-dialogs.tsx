@@ -141,21 +141,39 @@ export interface AdaChartProSettingsDialogProps {
 	settings: AdaChartProSettings;
 	/** Reverse-axis state, which is an axis override rather than a style. 反转坐标状态，它是坐标轴覆盖而非样式。 */
 	reverseAxis: boolean;
+	/**
+	 * Whether the chart can be drawn on — the umbrella switch, and like the reverse
+	 * axis it is a runtime state of the Wrapper rather than a style, so it rides
+	 * beside the six-row patch rather than inside it.
+	 *
+	 * 这张图表是否可画 —— 总开关，且与反转坐标一样是封装层的运行时状态而非样式，因此它搭在这个
+	 * 六行补丁旁边而不是里面。
+	 */
+	drawing: boolean;
 	/** Fires on every change: Pro applies settings live, and so does this. 每次改动都触发：Pro 的设置实时生效，这里也是。 */
 	onChange: (settings: AdaChartProSettings) => void;
 	onReverseAxisChange: (reverse: boolean) => void;
+	onDrawingChange: (drawing: boolean) => void;
 	onClose: () => void;
 }
 
 /**
- * The appearance dialog: candle kind, the four marks, the axis direction and the
- * grid.
+ * The appearance dialog: candle kind, the four marks, the axis direction, the
+ * grid, and the drawing switch.
+ *
+ * The last two rows are not styles. The reverse axis is a v10 axis override and
+ * the drawing switch is a decision about what this chart *is*, so both are
+ * runtime states of the Wrapper that ride beside the `Styles` patch rather than
+ * inside it.
  *
  * Every change is pushed upward immediately — the dialog has no draft of its
  * own, because the point of this one is to see the chart change while you look
  * at it. The confirm button therefore only closes.
  *
- * 外观对话框：蜡烛样式、四个标记、坐标轴方向与网格。
+ * 外观对话框：蜡烛样式、四个标记、坐标轴方向、网格，以及画线开关。
+ *
+ * 最后两行不是样式。反转坐标是 v10 的坐标轴覆盖，画线开关则是关于这张图表*是什么*的决定，因此
+ * 两者都是封装层的运行时状态、搭在 `Styles` 补丁旁边而不是里面。
  *
  * 每次改动都立刻向上推送 —— 这个对话框没有自己的草稿，因为它的意义正是让你盯着图表看它变。
  * 因此确定按钮只是关闭。
@@ -209,6 +227,12 @@ export function AdaChartProSettingsDialog(props: AdaChartProSettingsDialogProps)
 			label: t("gridShow"),
 			checked: settings.showGrid,
 			onChange: (checked) => change({ showGrid: checked }),
+		},
+		{
+			name: "drawing",
+			label: t("drawingShow"),
+			checked: props.drawing,
+			onChange: props.onDrawingChange,
 		},
 	];
 

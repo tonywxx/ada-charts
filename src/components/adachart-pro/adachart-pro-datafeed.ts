@@ -4,6 +4,7 @@ import type {
 	DataLoaderSubscribeBarParams,
 	DataLoaderUnsubscribeBarParams,
 	KLineData,
+	SymbolInfo,
 } from "klinecharts";
 import {
 	fetchOkxCandles,
@@ -15,6 +16,96 @@ import {
 } from "../../okx";
 import { sharedOkxStream, type OkxStream } from "../../okx-stream";
 import { okxBarFor } from "./adachart-pro-options";
+
+/**
+ * A {@link DataLoader} that can also name an instrument the caller only knows by
+ * name — the seam TradingView spells *datafeed* plus a symbol string.
+ *
+ * The method is optional because v10 has no such word: a loader whose instruments
+ * are already `SymbolInfo` objects keeps working untouched, and only one that
+ * fronts several venues has anything to answer.
+ *
+ * It may answer asynchronously, and it should answer with the *named* instrument
+ * in full — `pricePrecision` and, in particular, `volumePrecision`, which the
+ * engine silently reads as zero decimals when it is missing (`ADR-0005`).
+ *
+ * 一个还能按名字给出标的的 {@link DataLoader} —— 也就是 TradingView 所称的 *datafeed* 加
+ * 一个 symbol 字符串这一接缝。
+ *
+ * 该方法是可选的，因为 v10 没有这个词：标的本来就是 `SymbolInfo` 对象的 loader 原样可用，
+ * 只有面对多个数据源的那一个才有东西要回答。
+ *
+ * 它可以异步作答，且应当把被点名的标的**完整**交出 —— `pricePrecision`，尤其是
+ * `volumePrecision`，后者缺失时引擎会静默按零位小数读（见 `ADR-0005`）。
+ */
+export interface AdaChartProDataLoader extends DataLoader {
+	resolveSymbol?(name: string): SymbolInfo | Promise<SymbolInfo>;
+}
+
+/**
+ * One resolution per loader per name, held beside the loader rather than in any
+ * component. A multi-window grid shares one loader across every window and
+ * remounts a window whenever its bar size changes, so a component-held cache
+ * would be thrown away exactly when it was about to pay off.
+ *
+ * A *rejected* resolution is dropped rather than kept, so a venue that was down
+ * for a moment is asked again the next time the instrument is named; a
+ * resolution that succeeded is kept for the page's life, because a loader that
+ * fronts a venue has no reason to change an instrument's identity mid-session.
+ *
+ * `WeakMap` keyed by the loader, not by its name: two loaders fronting two venues
+ * may well use the same ticker spelling for different instruments.
+ *
+ * 每个 loader、每个名字只解析一次，且这份缓存放在 loader 身边而非任何组件里。多窗口网格共用
+ * 一个 loader、并在周期变化时重挂载窗口，因此放在组件里的缓存在最该发挥作用的那一刻恰好被丢掉。
+ *
+ * *被拒绝*的解析会被丢弃而非保留，使一时不可用的数据源在下次点名时再被问一次；解析成功的则
+ * 留存到页面结束，因为一个面对数据源的 loader 没有理由在会话中途改掉某个标的的身份。
+ *
+ * 用 `WeakMap` 按 loader 作键，而不是按名字：两个面对不同数据源的 loader 完全可能用同一个
+ * 代码拼写指向不同的标的。
+ */
+const symbolResolutions = new WeakMap<
+	AdaChartProDataLoader,
+	Map<string, Promise<SymbolInfo>>
+>();
+
+/**
+ * Resolves a symbol name through `resolve`, sharing one request per loader per
+ * name.
+ *
+ * The loader and its resolver are handed over separately on purpose: the loader
+ * is what the cache is keyed by, so it must be the object itself — a wrapper
+ * built for the call would be a new key every time and the cache would never
+ * hit — while the resolver is the narrowed method, which the caller has already
+ * checked exists.
+ *
+ * 经 `resolve` 解析标的名称，每个 loader、每个名字共用一次请求。
+ *
+ * loader 与它的解析方法分开交出是有意的：缓存的键是 loader 本身，因此必须是那个对象 ——
+ * 为这次调用临时造一个包装器会每次都成为新的键，缓存永不命中 —— 而解析方法是调用方已经确认
+ * 存在的、收窄过的那一个。
+ */
+export function resolveAdaChartProSymbol(
+	loader: AdaChartProDataLoader,
+	resolve: (name: string) => SymbolInfo | Promise<SymbolInfo>,
+	name: string,
+): Promise<SymbolInfo> {
+	let byName = symbolResolutions.get(loader);
+	if (!byName) {
+		byName = new Map();
+		symbolResolutions.set(loader, byName);
+	}
+	const cached = byName.get(name);
+	if (cached) return cached;
+	// Deferred to a microtask so a resolver that is synchronous on one path and
+	// asynchronous on another still lands the same way every time.
+	// 延迟到一个微任务，使一个在某些路径上同步、另一些路径上异步的解析方法每次都落在同一处。
+	const pending = Promise.resolve().then(() => resolve(name));
+	byName.set(name, pending);
+	void pending.catch(() => byName.delete(name));
+	return pending;
+}
 
 /**
  * An OKX-backed `klinecharts` v10 {@link DataLoader}: history over REST, live

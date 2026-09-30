@@ -3,13 +3,15 @@
  *
  * The chart's own labels come from `klinecharts`' locale catalogue; this table
  * only names the things this layer draws itself — the toolbar buttons, the
- * dialogs and their fields. It lives apart from any one component because the
- * toolbar and the dialogs both draw from it, and two tables would drift.
+ * dialogs and their fields, the drawing manager's panel. It lives apart from any
+ * one component because the toolbar and the dialogs both draw from it, and two
+ * tables would drift.
  *
  * Pro 外围所需的全部文案，集中一张表。
  *
  * 图表的文案来自 `klinecharts` 自己的词条库；本表只命名这一层自己绘制的东西 —— 工具栏按钮、
- * 各对话框及其字段。它独立于任何单个组件，因为工具栏与对话框都从它取值，两张表必然漂移。
+ * 各对话框及其字段、画线管理器面板。它独立于任何单个组件，因为工具栏与对话框都从它取值，
+ * 两张表必然漂移。
  */
 const MESSAGES: Record<string, Record<string, string>> = {
 	"en-US": {
@@ -41,11 +43,17 @@ const MESSAGES: Record<string, Record<string, string>> = {
 		indicatorLastValueShow: "Indicator last value",
 		reverseCoordinate: "Reverse axis",
 		gridShow: "Grid",
+		drawingShow: "Drawing",
 		parameter: "Parameter",
 		lineColor: "Line colour",
 		loading: "Loading",
 		empty: "No data",
 		indicatorSettings: "Indicator settings",
+		drawings: "Drawings",
+		rename: "Rename",
+		bringToFront: "Bring to front",
+		delete: "Delete",
+		noDrawings: "Nothing drawn yet",
 	},
 	"zh-CN": {
 		menu: "画线栏",
@@ -76,11 +84,17 @@ const MESSAGES: Record<string, Record<string, string>> = {
 		indicatorLastValueShow: "指标最新值",
 		reverseCoordinate: "反转坐标",
 		gridShow: "网格",
+		drawingShow: "画线",
 		parameter: "参数",
 		lineColor: "线颜色",
 		loading: "加载中",
 		empty: "暂无数据",
 		indicatorSettings: "指标设置",
+		drawings: "画线对象",
+		rename: "重命名",
+		bringToFront: "置于顶层",
+		delete: "删除",
+		noDrawings: "还没有画任何东西",
 	},
 };
 

@@ -692,3 +692,176 @@
 	height: 24px;
 	padding: 1px;
 }
+
+/* The drawing manager, docked inside the body over the chart's right edge.
+ *
+ * It is absolutely positioned rather than a flex sibling of the chart, so
+ * opening it does not narrow the chart: the whole point of an inventory is to
+ * look at a drawing while reading its row, and re-measuring the canvas under the
+ * reader's eyes would move every line they are comparing against.
+ *
+ * `z-index: 2` puts it above the chart layer (1) and below the loading and empty
+ * covers (50, 99): while there is no data there is nothing drawn to manage, and
+ * the panel says so rather than floating above the answer.
+ *
+ * 画线管理器，停靠在 body 内、图表右缘之上。
+ *
+ * 它是绝对定位而不是图表的 flex 兄弟，因此打开它不会把图表收窄：清单的意义就在于一边读行、一边看
+ * 那条画线，而在读者眼皮底下重新测量画布会让每一条用作比对的线都挪位。
+ *
+ * `z-index: 2` 使它位于图表层（1）之上、加载与空状态遮罩（50、99）之下：没有数据时也没有画线
+ * 可管，面板会这么说，而不是浮在那个答案之上。 */
+.adachart-pro__manager {
+	box-sizing: border-box;
+	position: absolute;
+	top: 0;
+	right: 0;
+	bottom: 0;
+	z-index: 2;
+	display: flex;
+	flex-direction: column;
+	width: 240px;
+	max-width: 100%;
+	border-left: 1px solid var(--adacp-border);
+	background: var(--adacp-panel);
+	color: var(--adacp-text);
+	font-size: 12px;
+}
+
+.adachart-pro__manager-header {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	padding: 6px 8px;
+	border-bottom: 1px solid var(--adacp-border);
+}
+
+.adachart-pro__manager-title {
+	flex: 1 1 auto;
+	font-weight: 600;
+}
+
+.adachart-pro__manager-close {
+	appearance: none;
+	width: 20px;
+	height: 20px;
+	padding: 0;
+	border: none;
+	border-radius: 4px;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	line-height: 18px;
+	cursor: pointer;
+}
+
+.adachart-pro__manager-close:hover {
+	background: rgb(127 127 127 / 18%);
+}
+
+.adachart-pro__manager-empty {
+	padding: 10px 8px;
+	opacity: 0.6;
+}
+
+.adachart-pro__manager-list {
+	flex: 1 1 auto;
+	margin: 0;
+	padding: 0;
+	overflow-y: auto;
+	list-style: none;
+}
+
+/* One drawing per row: its glyph and name take the free space, the five actions
+ * sit at the right edge and are sized to their glyphs rather than to their
+ * labels, so a long name shortens the name and never the controls.
+ *
+ * 每条画线一行：图标与名称占据空余空间，五个操作靠右缘排列、按图标而非文案取尺寸，因此较长的
+ * 名称只会让名称变短，永远不会挤压控件。 */
+.adachart-pro__manager-row {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	padding: 2px 4px 2px 8px;
+}
+
+.adachart-pro__manager-row:hover {
+	background: rgb(127 127 127 / 12%);
+}
+
+/* Selected on the canvas, not in this panel: v10 offers no way to select an
+ * overlay programmatically — see the component's comment.
+ * 在画布上被选中，而不是在本面板里：v10 无法以编程方式选中一条 overlay —— 见组件的注释。 */
+.adachart-pro__manager-row.adachart-pro__manager-row--selected {
+	background: rgb(22 119 255 / 14%);
+}
+
+.adachart-pro__manager-label {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.adachart-pro__manager-text {
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+/* The row's own glyph is the drawing bar's, at the bar's weight, so a row is
+ * recognisable by the shape of the icon before its name is read.
+ * 行内图标就是画线栏那一个，线宽也一致，因此读者在读到名字之前就能靠形状认出一行。 */
+.adachart-pro__manager-label .adachart-pro__icon svg {
+	width: 16px;
+	height: 16px;
+}
+
+.adachart-pro__manager-input {
+	box-sizing: border-box;
+	flex: 1 1 auto;
+	min-width: 0;
+	padding: 2px 6px;
+	border: 1px solid var(--adacp-accent);
+	border-radius: 4px;
+	background: var(--adacp-input);
+	color: inherit;
+	font: inherit;
+}
+
+.adachart-pro__manager-action {
+	appearance: none;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex: 0 0 auto;
+	width: 22px;
+	height: 22px;
+	padding: 0;
+	border: none;
+	border-radius: 4px;
+	background: transparent;
+	color: inherit;
+	cursor: pointer;
+}
+
+.adachart-pro__manager-action:hover {
+	background: rgb(127 127 127 / 22%);
+}
+
+/* `aria-pressed` is what the state is reported with, and the same attribute is
+ * what tints the button — the two cannot drift apart this way.
+ * `aria-pressed` 是状态的汇报方式，同一个属性也用来给按钮上色 —— 这样两者不可能各自漂移。 */
+.adachart-pro__manager-action[aria-pressed="true"] {
+	color: var(--adacp-accent);
+}
+
+.adachart-pro__manager-action--delete {
+	margin-left: 6px;
+}
+
+.adachart-pro__manager-action .adachart-pro__icon svg {
+	width: 15px;
+	height: 15px;
+}

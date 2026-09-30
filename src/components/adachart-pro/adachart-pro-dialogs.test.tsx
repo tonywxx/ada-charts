@@ -42,8 +42,10 @@ describe("AdaChartProSettingsDialog", () => {
 			locale: "en-US",
 			settings: ADACHARTPRO_DEFAULT_SETTINGS,
 			reverseAxis: false,
+			drawing: true,
 			onChange: noop,
 			onReverseAxisChange: noop,
+			onDrawingChange: noop,
 			onClose: noop,
 		}),
 	);
@@ -58,7 +60,7 @@ describe("AdaChartProSettingsDialog", () => {
 		expect(markup).toContain("<button");
 	});
 
-	it("carries the seven rows Pro's dialog has", () => {
+	it("carries Pro's seven rows plus the drawing switch", () => {
 		for (const label of [
 			"Candle type",
 			"Last price",
@@ -67,17 +69,21 @@ describe("AdaChartProSettingsDialog", () => {
 			"Indicator last value",
 			"Reverse axis",
 			"Grid",
+			// This library's own row, and the only one that removes chrome rather
+			// than changing how the chart is painted.
+			// 本库自己的一行，也是唯一一行移除外围、而非改变图表画法的设置。
+			"Drawing",
 		]) {
 			expect(markup).toContain(label);
 		}
-		expect(count(markup, "adachart-pro__field-label")).toBe(7);
+		expect(count(markup, "adachart-pro__field-label")).toBe(8);
 	});
 
-	it("offers every candle kind and six switches", () => {
+	it("offers every candle kind and seven switches", () => {
 		for (const type of ADACHARTPRO_SETTING_CANDLE_TYPES) {
 			expect(markup).toContain(`value="${type}"`);
 		}
-		expect(count(markup, 'type="checkbox"')).toBe(6);
+		expect(count(markup, 'type="checkbox"')).toBe(7);
 		// The one non-switch row is the candle select.
 		// 唯一的非开关行是蜡烛样式下拉。
 		expect(count(markup, "<select")).toBe(1);
@@ -85,9 +91,42 @@ describe("AdaChartProSettingsDialog", () => {
 
 	it("mirrors the live values it was seeded with", () => {
 		expect(markup).toContain('value="candle_solid"');
-		// Every switch starts checked, because the defaults for these four are on.
-		// 四个开关起手都是勾选的，因为这四行的默认值都是开启。
-		expect(count(markup, "checked=")).toBe(4);
+		// Every switch starts checked, because the defaults for these five are on.
+		// 五个开关起手都是勾选的，因为这五行的默认值都是开启。
+		expect(count(markup, "checked=")).toBe(5);
+	});
+
+	it("shows the drawing switch off for a chart that cannot be drawn on, and leaves room to turn it on", () => {
+		// The row is not hidden along with the chrome it controls: a reader who has
+		// just switched drawing off has to be able to switch it back on from the same
+		// dialog, so the row outlives the bar, the toolbar toggle and the manager.
+		//
+		// 这一行不会连同它控制的那些外围一起消失：刚把画线关掉的读者必须能从同一个对话框再打开它，
+		// 因此这一行比画线栏、工具栏开关与管理器活得更久。
+		const off = renderToStaticMarkup(
+			createElement(AdaChartProSettingsDialog, {
+				locale: "en-US",
+				settings: ADACHARTPRO_DEFAULT_SETTINGS,
+				reverseAxis: false,
+				drawing: false,
+				onChange: noop,
+				onReverseAxisChange: noop,
+				onDrawingChange: noop,
+				onClose: noop,
+			}),
+		);
+		// The row immediately after its label is the checkbox, and it is the one
+		// switch in this dialog that is off — every style row still mirrors the
+		// defaults it was seeded with.
+		//
+		// 紧跟在标签之后的就是那个复选框，而它是本对话框里唯一未勾选的开关 —— 样式各行仍然镜像
+		// 它们被播种时的默认值。
+		const label = "Drawing</label>";
+		const control = off.slice(off.indexOf(label) + label.length);
+		const input = control.slice(0, control.indexOf(">") + 1);
+		expect(input).toContain('type="checkbox"');
+		expect(input).not.toContain("checked");
+		expect(count(off, "checked=")).toBe(4);
 	});
 });
 

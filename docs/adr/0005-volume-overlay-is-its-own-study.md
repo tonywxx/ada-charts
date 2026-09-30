@@ -30,7 +30,7 @@ Two engine details decide how the band is expressed.
 
 The overlay's legend reads `VOLUME: 0.68` on the `1m` window and `VOLUME: 6.356K` on the daily one, and the number it rounds to is the instrument's rather than the study's. `series: "volume"` is what routes it there: the engine hands every volume series the symbol's `volumePrecision`, in the study's legend and in the candle tooltip's `Volume` alike. An instrument that names none resolves to the engine's own fallback of **zero decimals**, which is how a fractional volume of `0.68` came to be drawn as `0`.
 
-Stating the precision on the template does not fix that, and this was measured rather than assumed: the engine's `override` does lock a numeric precision, and the indicator's constructor clears that lock immediately afterwards, so the instrument's precision passes through either way. The completion happens where the symbol is assembled (`resolveSymbol`), and it is done for volume only — the engine's price fallback of two decimals is a usable default for a price, while its volume fallback of zero decimals is not usable for a volume.
+Stating the precision on the template does not fix that, and this was measured rather than assumed: the engine's `override` does lock a numeric precision, and the indicator's constructor clears that lock immediately afterwards, so the instrument's precision passes through either way. The completion happens where the symbol is assembled (`resolveSymbolInfo`), and it is done for volume only — the engine's price fallback of two decimals is a usable default for a price, while its volume fallback of zero decimals is not usable for a volume.
 
 ## One inventory, or two
 

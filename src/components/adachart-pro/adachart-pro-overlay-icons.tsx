@@ -23,7 +23,8 @@ import { useId, type ReactElement } from "react";
  *
  * The four glyphs for tools `@klinecharts/pro` does not group (`brush`,
  * `simpleAnnotation`, `simpleTag`, `measure`) have no source to copy and are
- * drawn here in the same 22x22 cell and stroke weight.
+ * drawn here in the same 22x22 cell and stroke weight. So are the drawing
+ * manager's two (`rename`, `front`), which name no overlay at all.
  *
  * 画线栏图标，逐个移植自 `@klinecharts/pro` 编译产物里内联的 SVG。它们是那个包的画线栏中
  * 唯一既无法由标记重新推导、也无法由行为重新实现的部分 —— 形状就是形状，因此照搬而非重画。
@@ -39,7 +40,8 @@ import { useId, type ReactElement } from "react";
  *    就同时可见）就会撞 id。这些 id 用 `useId()` 加了命名空间，使每个实例都不同；裁剪本身原样保留。
  *
  * `@klinecharts/pro` 未归组的四个工具（`brush`、`simpleAnnotation`、`simpleTag`、`measure`）
- * 没有源可抄，按同样的 22x22 方格与线宽在此绘制。
+ * 没有源可抄，按同样的 22x22 方格与线宽在此绘制。画线管理器的那两个（`rename`、`front`）
+ * 同样如此 —— 它们根本不对应任何 overlay。
  */
 
 function HorizontalStraightLineIcon(): ReactElement {
@@ -232,9 +234,27 @@ function MeasureIcon(): ReactElement {
 	return <ExtraIcon shape={<path d="M3 8.6h16v4.8H3z M6 8.6v2.2 M9 8.6v2.2 M12 8.6v2.2 M15 8.6v2.2" />} />;
 }
 
-/** Every glyph, by overlay name (plus `chevron` for the expand arrows). 全部图标，按画线名称索引（另含 `chevron` 展开箭头）。 */
+/**
+ * The two glyphs the drawing manager needs and the copied set does not carry:
+ * renaming a row and raising one above the rest. Drawn with `ExtraIcon` for the
+ * same reason the four ungrouped tools are — there is no source to copy.
+ *
+ * 画线管理器需要、而被抄的那一套里没有的两个图标：重命名某一行，以及把一行抬到其余之上。
+ * 与未归组的四个工具同样用 `ExtraIcon` 绘制，理由相同 —— 没有源可抄。
+ */
+function RenameIcon(): ReactElement {
+	return <ExtraIcon shape={<path d="M4.5 17.5l1-3.6 8.2-8.2 2.6 2.6-8.2 8.2-3.6 1z M14.6 4.5l2.9 2.9" />} />;
+}
+
+function FrontIcon(): ReactElement {
+	return <ExtraIcon shape={<path d="M11 17.5V8.4 M7.4 11.6L11 8 14.6 11.6 M4.5 5.5h13" />} />;
+}
+
+/** Every glyph, by overlay name (plus `chevron` for the expand arrows and the drawing manager's `rename` / `front`). 全部图标，按画线名称索引（另含 `chevron` 展开箭头与画线管理器的 `rename` / `front`）。 */
 const ICONS: Record<string, () => ReactElement> = {
 	chevron: ChevronIcon,
+	rename: RenameIcon,
+	front: FrontIcon,
 	horizontalStraightLine: HorizontalStraightLineIcon,
 	horizontalRayLine: HorizontalRayLineIcon,
 	horizontalSegment: HorizontalSegmentIcon,

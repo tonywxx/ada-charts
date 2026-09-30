@@ -8,6 +8,10 @@ import {
 	periodLabel,
 	quoteCurrencyOf,
 	resolveAdaChartProProps,
+	symbolInfoFrom,
+	symbolOptionFields,
+	symbolOptionKey,
+	symbolOptionLabel,
 } from "./adachart-pro-options";
 
 /**
@@ -127,6 +131,95 @@ describe("quoteCurrencyOf", () => {
 	it("returns nothing rather than a guess when there is no quote part", () => {
 		expect(quoteCurrencyOf("AAPL")).toBeUndefined();
 		expect(quoteCurrencyOf("")).toBeUndefined();
+	});
+});
+
+/**
+ * The local reading of a requested instrument. It is what the chart is handed
+ * when no loader can name it, and what stays on screen while one is being asked,
+ * so the two facts that matter are that a name becomes a ticker and that no
+ * field the engine reads is ever left out.
+ *
+ * 对被要求的标的所做的本地读法。没有任何 loader 能命名它时交给图表的就是它，某个 loader 被询问
+ * 期间留在屏幕上的也是它，因此在意的两件事是：名称会变成 ticker，以及引擎会读的字段一个也不缺。
+ */
+describe("symbolInfoFrom", () => {
+	it("reads a name as the ticker and fills the precisions from the defaults", () => {
+		// v10's own reading of a name: the string *is* the ticker. The precisions
+		// cannot be left to the engine — it reads a missing `volumePrecision` as
+		// zero decimals, which draws every small volume as `0` (`ADR-0005`).
+		// v10 自己读名字的方式：整个字符串*就是* ticker。精度不能留给引擎 —— 它把缺失的
+		// `volumePrecision` 读作零位小数，会把所有小成交量画成 `0`（见 `ADR-0005`）。
+		expect(symbolInfoFrom("ETH-USDT")).toEqual({
+			ticker: "ETH-USDT",
+			pricePrecision: ADACHARTPRO_DEFAULTS.pricePrecision,
+			volumePrecision: ADACHARTPRO_DEFAULTS.volumePrecision,
+			priceCurrency: "USDT",
+		});
+	});
+
+	it("keeps every field the caller stated, and the keys v10 never reads", () => {
+		// `logo` is Pro's own; a local reading that resolved only v10's three keys
+		// would strip it off before the picker ever saw it.
+		// `logo` 是 Pro 自己的；只解析 v10 三个键的本地读法会在选择器看到它之前就把它抹掉。
+		const info = symbolInfoFrom({
+			ticker: "ETH-BTC",
+			pricePrecision: 6,
+			logo: "https://example.com/eth.svg",
+		});
+		expect(info.pricePrecision).toBe(6);
+		expect(info.logo).toBe("https://example.com/eth.svg");
+		expect(info.volumePrecision).toBe(ADACHARTPRO_DEFAULTS.volumePrecision);
+		// The quote currency is derived from the ticker only when unstated.
+		// 只在未陈述时，计价币才从 ticker 推导。
+		expect(info.priceCurrency).toBe("BTC");
+	});
+
+	it("falls back to the default instrument for a nameless object", () => {
+		expect(symbolInfoFrom({}).ticker).toBe(ADACHARTPRO_DEFAULTS.ticker);
+	});
+});
+
+/**
+ * How the picker reads an option, whichever of the two spellings it was written
+ * in. The three functions are one decision seen from three sides — what to
+ * filter on, what to print, and what to key the list by — so they are asserted
+ * together over the same options.
+ *
+ * 选择器如何读一项，无论它是用两种说法中的哪一种写下的。这三个函数是同一个判断的三个侧面 ——
+ * 据以过滤什么、显示什么、以什么作列表键 —— 因此它们在同一批选项上一起断言。
+ */
+describe("symbol options", () => {
+	const name = "BTC-USDT";
+	const described = {
+		ticker: "BTC-USDT",
+		pricePrecision: 2,
+		volumePrecision: 2,
+		shortName: "BTC",
+		name: "Bitcoin",
+	};
+
+	it("offers a name and its ticker to the filter", () => {
+		expect(symbolOptionFields(name)).toEqual([name, undefined, undefined]);
+		expect(symbolOptionFields(described)).toEqual(["BTC-USDT", "BTC", "Bitcoin"]);
+	});
+
+	it("prints the shortest name the option carries, falling back to the ticker", () => {
+		expect(symbolOptionLabel(name)).toBe(name);
+		expect(symbolOptionLabel(described)).toBe("BTC");
+		expect(symbolOptionLabel({ ...described, shortName: undefined })).toBe(
+			"Bitcoin",
+		);
+		expect(symbolOptionLabel({ ticker: "AAPL", pricePrecision: 2, volumePrecision: 0 })).toBe(
+			"AAPL",
+		);
+	});
+
+	it("keys the list by ticker, so the two spellings of one instrument agree", () => {
+		// A key has to be stable across the switcher re-rendering, and the ticker is
+		// the one field every spelling carries.
+		// 键要在切换器反复重渲时保持稳定，而 ticker 是每种说法都带的唯一字段。
+		expect(symbolOptionKey(name)).toBe(symbolOptionKey(described));
 	});
 });
 

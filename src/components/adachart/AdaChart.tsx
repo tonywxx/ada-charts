@@ -1,17 +1,17 @@
 import {
-	dispose,
-	init,
 	type ActionCallback,
 	type ActionType,
 	type AxisCreateRangeCallback,
 	type CandleType,
 	type Chart,
 	type DataLoader,
-	type DeepPartial,
 	type DecimalFold,
+	type DeepPartial,
+	dispose,
 	type Formatter,
 	type Hotkey,
 	type IndicatorCreate,
+	init,
 	type KLineData,
 	type Layout,
 	type OverlayCreate,
@@ -30,7 +30,7 @@ import { memo, useEffect, useMemo, useRef } from "react";
 import { decideDataPatch } from "../../data-patch";
 import { useEngineMount } from "../../engine-mount";
 import {
-	ADACHART_DEFAULTS,
+	type ADACHART_DEFAULTS,
 	areAdaChartPropsEqual,
 	buildInitOptions,
 	buildStyles,
@@ -40,7 +40,7 @@ import {
 	normalizeKLineData,
 	resolveAdaChartProps,
 	resolvePeriod,
-	resolveSymbol,
+	resolveSymbolInfo,
 	sameKLineData,
 	structuralKey,
 } from "./adachart-options";
@@ -259,7 +259,9 @@ const volumeOverlayAxisRange: AxisCreateRangeCallback = ({ defaultRange }) => {
  * 指标项；`stack` 使其与价格面板共用，而不是另开一个。为什么在 v10 里需要显式 `paneId`，
  * 见 {@link CANDLE_PANE_ID}。
  */
-export type AdaChartIndicator = (IndicatorCreate | string) & { stack?: boolean };
+export type AdaChartIndicator = (IndicatorCreate | string) & {
+	stack?: boolean;
+};
 
 /**
  * Everything `AdaChart` accepts. Each prop maps 1:1 onto a `klinecharts` v10
@@ -273,7 +275,9 @@ export type AdaChartIndicator = (IndicatorCreate | string) & { stack?: boolean }
  * {@link AdaChartProps.overlays} 与 {@link AdaChartProps.onChartReady} 让库的全部能力始终可达，
  * 封装层不会成为某个功能无法使用的原因。
  */
-export interface AdaChartProps extends AdaChartConvenienceStyleProps, AdaChartEventProps {
+export interface AdaChartProps
+	extends AdaChartConvenienceStyleProps,
+		AdaChartEventProps {
 	// ------------------------------------------------------------------ data
 	/**
 	 * Candles to render. `timestamp` is epoch **milliseconds**, matching what
@@ -472,7 +476,10 @@ const ACTION_KEYS = Object.keys(ACTIONS) as Array<keyof typeof ACTIONS>;
  */
 function AdaChart(props: AdaChartProps) {
 	const resolved = useMemo(() => resolveAdaChartProps(props), [props]);
-	const data = useMemo(() => normalizeKLineData(resolved.data), [resolved.data]);
+	const data = useMemo(
+		() => normalizeKLineData(resolved.data),
+		[resolved.data],
+	);
 
 	/** Latest dataset, read synchronously by the {@link DataLoader} on `init`. */
 	const dataRef = useRef<KLineData[]>(data);
@@ -509,7 +516,10 @@ function AdaChart(props: AdaChartProps) {
 			ensureExtensionOverlays();
 			ensureVolumeOverlay();
 
-			const chart = init(container, buildInitOptions(latestRef.current.resolved));
+			const chart = init(
+				container,
+				buildInitOptions(latestRef.current.resolved),
+			);
 			if (!chart) return null;
 
 			const external = latestRef.current.resolved.dataLoader;
@@ -519,23 +529,26 @@ function AdaChart(props: AdaChartProps) {
 				onUnsubscribe: pushQueue.clear,
 			});
 			chart.setDataLoader(
-					external
-						? {
+				external
+					? {
 							getBars: (params) => external.getBars(params),
 							subscribeBar: (params) => {
 								pushQueue.setPush(params.callback);
-								return external.subscribeBar?.({ ...params, callback: pushQueue.push });
+								return external.subscribeBar?.({
+									...params,
+									callback: pushQueue.push,
+								});
 							},
 							unsubscribeBar: (params) => {
 								pushQueue.clear();
-							return external.unsubscribeBar?.(params);
-						},
-					}
+								return external.unsubscribeBar?.(params);
+							},
+						}
 					: memory,
 			);
 			// symbol + period are what let the loader's init request fire at all.
 			// symbol 与 period 是 loader 的 init 请求得以触发的前提。
-			chart.setSymbol(resolveSymbol(latestRef.current.resolved));
+			chart.setSymbol(resolveSymbolInfo(latestRef.current.resolved));
 			chart.setPeriod(resolvePeriod(latestRef.current.resolved));
 
 			// Every action handler dispatches through the ref, so subscriptions made
@@ -610,9 +623,9 @@ function AdaChart(props: AdaChartProps) {
 
 	// Symbol identity changes re-seed through the loader's init path.
 	// 标的身份变化会经由 loader 的 init 路径重新灌入。
-	const symbolKey = JSON.stringify(resolveSymbol(resolved));
+	const symbolKey = JSON.stringify(resolveSymbolInfo(resolved));
 	useEffect(() => {
-		engine()?.setSymbol(resolveSymbol(latestRef.current.resolved));
+		engine()?.setSymbol(resolveSymbolInfo(latestRef.current.resolved));
 	}, [symbolKey, engine]);
 
 	const periodKey = JSON.stringify(resolvePeriod(resolved));

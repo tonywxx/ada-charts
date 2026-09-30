@@ -12,12 +12,16 @@ _Avoid_: backend, provider, dependency
 The React component that presents an engine as props and lifecycle, without hiding the engine's full surface.
 _Avoid_: bridge, adapter, proxy
 
+**Feature flag**:
+A named switch that decides whether an optional part of a Wrapper exists on a given chart. The Pro layer is one component whose capabilities are turned on per flag, not several components to choose between.
+_Avoid_: option, toggle, mode
+
 **Series**:
 One plotted stream of data on a chart, of a single kind. A chart may hold several series; each is added and configured independently.
 _Avoid_: dataset, plot, line
 
 **Chart type**:
-The visual kind of a series — candlestick, line, area, bar, histogram or baseline. It describes how values are drawn, not what they mean.
+The visual kind of a series — candlestick, line, area, bar, histogram or baseline. It describes how values are drawn, not what they mean. A scheme that decides which candles exist at all — Renko, Kagi, point & figure, range bars — is not a chart type: it re-samples the data, which is bar aggregation and belongs to the source.
 _Avoid_: chart kind, series type, style
 
 **Candle**:
@@ -48,6 +52,10 @@ _Avoid_: label, pin, annotation
 A straight line drawn at a fixed axis value, independent of any series' data.
 _Avoid_: guide, gridline, rule
 
+**Drawing manager**:
+The panel that lists the shapes drawn on a chart and acts on one of them — naming, locking, hiding, raising or deleting it. TradingView calls its version an *object tree*, which names the structure; this names the responsibility, as the rest of this list does.
+_Avoid_: object tree, overlay list, drawing list
+
 **Watermark**:
 Non-interactive text or logo drawn behind the series as attribution or branding.
 _Avoid_: overlay (an overlay is a data-attached shape)
@@ -67,6 +75,10 @@ _Avoid_: tick size, granularity, decimals, scale
 **Theme**:
 The coordinated colour and typography treatment applied across a chart's parts.
 _Avoid_: style (style means a single part's settings), skin
+
+**DataLoader**:
+The source of a chart's data, named the way the engine names it — `getBars`, plus optional `subscribeBar` and `unsubscribeBar`, asked for a `SymbolInfo` and a `Period`. TradingView spells this same seam *datafeed*, and the symbol string it takes is this `SymbolInfo`'s `ticker`. Which venue answers it is the caller's business: a chart is given one loader and one instrument and knows nothing else.
+_Avoid_: provider, connector, adapter
 
 **Live data**:
 Market data fetched from its source when the page is opened. It arrives once, as a set; a source that keeps pushing after that is supplying streaming data.

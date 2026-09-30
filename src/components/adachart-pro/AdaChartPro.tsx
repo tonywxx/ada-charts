@@ -4,6 +4,7 @@ import type {
 	DeepPartial,
 	Formatter,
 	OverlayCreate,
+	OverlayEvent,
 	OverlayMode,
 	Period,
 	Styles,
@@ -17,6 +18,8 @@ import "./adachart-pro.css";
 import {
 	OkxDataLoader,
 	observeBars,
+	resolveAdaChartProSymbol,
+	type AdaChartProDataLoader,
 	type AdaChartProDataState,
 } from "./adachart-pro-datafeed";
 import {
@@ -26,14 +29,21 @@ import {
 } from "./adachart-pro-dialogs";
 import { AdaChartProDrawingBar } from "./adachart-pro-drawing-bar";
 import {
+	AdaChartProDrawingManager,
+	type AdaChartProDrawingRow,
+} from "./adachart-pro-drawing-manager";
+import {
 	ADACHARTPRO_DRAWING_GROUP_ID,
 	drawingGroupsFor,
+	drawingToolLabel,
 } from "./adachart-pro-drawing-tools";
 import { messageFor } from "./adachart-pro-messages";
 import {
 	areAdaChartProPropsEqual,
 	mergeAdaChartProStyles,
 	resolveAdaChartProProps,
+	symbolInfoFrom,
+	type AdaChartProSymbolOption,
 } from "./adachart-pro-options";
 import {
 	ADACHARTPRO_DEFAULT_SETTINGS,
@@ -61,11 +71,33 @@ export interface AdaChartProProps {
 	 * Data source. Defaults to an {@link OkxDataLoader} streaming live OKX
 	 * candles; supply your own to change the venue.
 	 *
+	 * Give it a {@link AdaChartProDataLoader.resolveSymbol} to name instruments by
+	 * string, the way TradingView's datafeed does; leave it off and this layer
+	 * reads a name as the ticker itself.
+	 *
 	 * 数据源。默认使用 {@link OkxDataLoader} 推送实时 OKX 行情；传入自定义实现可更换数据源。
+	 *
+	 * 给它一个 {@link AdaChartProDataLoader.resolveSymbol} 就能像 TradingView 的 datafeed 那样
+	 * 用字符串点名标的；不给，本层就把名称本身当作 ticker 读。
 	 */
-	dataLoader?: DataLoader;
-	/** Instrument to load. Defaults to OKX `BTC-USDT`. 要加载的标的；默认使用 OKX 的 `BTC-USDT`。 */
-	symbol?: Partial<SymbolInfo>;
+	dataLoader?: AdaChartProDataLoader;
+	/**
+	 * Instrument to load, named either way: the string a datafeed takes
+	 * (`"BINANCE:BTCUSDT"`), or an object carrying the fields. Defaults to OKX
+	 * `BTC-USDT`.
+	 *
+	 * A string is handed to the loader's `resolveSymbol` when it has one, and is
+	 * otherwise read as the ticker. Resolution is asynchronous, so the chart is
+	 * not built until the instrument is settled — the last answer wins if the
+	 * instrument changes while one is in flight.
+	 *
+	 * 要加载的标的，两种说法皆可：datafeed 所取的字符串（如 `"BINANCE:BTCUSDT"`），或一个
+	 * 带字段的对象。默认使用 OKX 的 `BTC-USDT`。
+	 *
+	 * 字符串在 loader 有 `resolveSymbol` 时交给它，否则按 ticker 读。解析是异步的，因此标的
+	 * 确定之前不会建图 —— 若在解析途中换了标的，最后给出答案的那个胜出。
+	 */
+	symbol?: string | Partial<SymbolInfo>;
 	/** Active bar period in v10's shape, e.g. `{ type: "hour", span: 4 }`. 当前周期，采用 v10 形状。 */
 	period?: Period;
 	/** Period presets offered in the toolbar. 工具栏提供的周期预设。 */
@@ -88,12 +120,61 @@ export interface AdaChartProProps {
 	mainIndicators?: string[];
 	/** Indicators in their own sub panes, e.g. `["VOL", "MACD"]`. 放置在独立副面板的指标。 */
 	subIndicators?: string[];
+	/**
+	 * Umbrella switch for the whole drawing surface — the left-hand bar, that bar's
+	 * toggle and the {@link AdaChartProDrawingManager} — and the value the settings
+	 * dialog's last switch starts from. Off means this chart has no way to draw, and
+	 * the drawing entries leave the chrome rather than appearing disabled: the switch
+	 * decides what the chart *is*, so a control that can never be pressed is a
+	 * question the reader cannot answer.
+	 *
+	 * It is an umbrella rather than a third switch beside {@link drawingBarVisible}
+	 * and {@link drawingManager}: the three pieces of chrome answer to one
+	 * decision, and a caller with no drawing should not have to state that three
+	 * times. It narrows the other two and can never widen them — a manager still
+	 * needs its own flag, and a bar still needs to be shown.
+	 *
+	 * Like `theme` and `locale`, it is steered rather than fixed: a chart that can
+	 * be drawn on still offers the settings switch, so a reader can turn drawing off
+	 * without the caller remounting anything, and a later `drawing` prop change wins
+	 * the value back.
+	 *
+	 * It does **not** remove what has already been drawn. A drawing is data — the
+	 * caller may have put it on the chart through the raw instance — and deleting
+	 * it is the {@link AdaChartProDrawingManager}'s job, not a switch's. So the
+	 * drawings stay, and turning drawing back on brings the panel back with them.
+	 *
+	 * 整块画线界面的总开关 —— 左侧画线栏、那条栏的开关与 {@link AdaChartProDrawingManager} ——
+	 * 也就是设置对话框最后一行开关的初值。关闭意味着这张图表没有办法画线，且画线相关入口直接离开
+	 * 外围而不是显示为禁用：该开关决定这张图表*是什么*，一个永远按不动的控件是读者回答不了的问题。
+	 *
+	 * 它是总开关，而不是 {@link drawingBarVisible} 与 {@link drawingManager} 旁边的第三个开关：
+	 * 这三块外围回答的是同一个决定，而不做画线的调用方不该把同一件事说三遍。它只能收窄另外两个、
+	 * 永远无法放宽 —— 管理器仍需它自己的开关，栏仍需被显示出来。
+	 *
+	 * 与 `theme`、`locale` 一样，它是被掌舵的而不是写死的：能画线的图表仍然会提供设置里那一行开关，
+	 * 因此读者无需调用方重新挂载就能自己关掉画线，而之后的 `drawing` prop 变化会把取值收回。
+	 *
+	 * 它**不**移除已经画好的东西。一条画线是数据 —— 调用方可能经原始实例把它放上图表 —— 而删除它
+	 * 是 {@link AdaChartProDrawingManager} 的职责，不是一个开关的。因此画线留在图上，重新打开画线时
+	 * 面板会连同它们一起回来。
+	 */
+	drawing?: boolean;
 	/** Show the left-hand drawing bar. 是否显示左侧画线栏。 */
 	drawingBarVisible?: boolean;
 	/** Overlay names the drawing bar offers. Defaults to every name `AdaChart` can draw. 画线栏提供的名称；默认是 `AdaChart` 能画的全部。 */
 	drawingTools?: readonly string[];
+	/**
+	 * Feature flag for the {@link AdaChartProDrawingManager} — the panel that
+	 * lists, names, locks, hides and deletes what has been drawn. Off by default;
+	 * see the `Drawing manager` term in `CONTEXT.md`.
+	 *
+	 * {@link AdaChartProDrawingManager}（列出、命名、锁定、隐藏并删除已画对象的画线管理器）
+	 * 的开关。默认关闭；见 `CONTEXT.md` 里的 `Drawing manager` 词条。
+	 */
+	drawingManager?: boolean;
 	/** Instruments to pick from; the picker only appears when this is supplied. 可供选择的标的；提供时才显示选择器。 */
-	symbols?: readonly SymbolInfo[];
+	symbols?: readonly AdaChartProSymbolOption[];
 	/** Raw `klinecharts` style overrides forwarded to `AdaChart`. 透传给 `AdaChart` 的原始样式覆盖。 */
 	styles?: DeepPartial<Styles>;
 	/**
@@ -112,7 +193,16 @@ export interface AdaChartProProps {
 export interface AdaChartProApi {
 	/** The raw `klinecharts` instance, for everything not surfaced here. 原始 `klinecharts` 实例，用于此处未暴露的一切。 */
 	chart(): Chart | null;
-	setSymbol(symbol: SymbolInfo): void;
+	/**
+	 * Names the instrument, in either term the `symbol` prop takes. The chart is
+	 * handed the *resolved* one, so a name that has to travel through the loader's
+	 * `resolveSymbol` changes what is drawn only once that resolution lands.
+	 *
+	 * 点名标的，两种说法与 `symbol` 属性相同。图表拿到的是**已解析**的那个，因此需要经 loader
+	 * 的 `resolveSymbol` 走一趟的名称，要等那次解析落地才改变画面。
+	 */
+	setSymbol(symbol: string | SymbolInfo): void;
+	/** The instrument on screen, already resolved. 屏幕上的标的，已解析。 */
 	getSymbol(): SymbolInfo;
 	setPeriod(period: Period): void;
 	getPeriod(): Period;
@@ -274,19 +364,26 @@ function observedLoaderFor(
 function AdaChartPro(props: AdaChartProProps) {
 	const resolved = useMemo(() => resolveAdaChartProProps(props), [props]);
 
-	// The eight values a caller can also steer through props. Each is seeded from
+	// The nine values a caller can also steer through props. Each is seeded from
 	// the resolved props and then handed to `useSteered`, which is what makes a
-	// later prop change win the value back from the toolbar.
-	// 调用方也能通过 props 掌舵的八个取值。各自从解析后的 props 播种，随后交给 `useSteered` ——
-	// 正是它让之后的 prop 变化把取值从工具栏手里收回。
+	// later prop change win the value back from the toolbar or the settings dialog.
+	// 调用方也能通过 props 掌舵的九个取值。各自从解析后的 props 播种，随后交给 `useSteered` ——
+	// 正是它让之后的 prop 变化把取值从工具栏或设置对话框手里收回。
 	const [theme, setTheme] = useSteered(props.theme, resolved.theme);
 	const [locale, setLocale] = useSteered(props.locale, resolved.locale);
 	const [timezone, setTimezone] = useSteered(props.timezone, resolved.timezone);
-	// `resolved.symbol` rather than `props.symbol`: a partial symbol leaves the
-	// precisions out, and the resolved pair is what fills them.
-	// 用 `resolved.symbol` 而非 `props.symbol`：局部传入的标的不带精度，补上它们的正是解析
-	// 后的那一对。
-	const [symbol, setSymbol] = useSteered(props.symbol, resolved.symbol);
+	// The instrument as it was *asked for*, not as it resolved: a name has to
+	// stay a name until a loader answers it, and the answer arrives through the
+	// effect below. `resolved.symbolRequest` rather than `props.symbol` because an
+	// absent symbol still needs the default instrument to stand in for it.
+	//
+	// 标的*被要求*时的样子，而不是解析后的样子：名称必须一直是名称，直到某个 loader 回答它，
+	// 而那个回答经下面的 effect 到达。用 `resolved.symbolRequest` 而非 `props.symbol`，是因为
+	// 标的缺省时仍需一个默认标的来代表它。
+	const [symbolRequest, setSymbolRequest] = useSteered(
+		props.symbol,
+		resolved.symbolRequest,
+	);
 	const [period, setPeriod] = useSteered(props.period, resolved.period);
 	const [mainIndicators, setMainIndicators] = useSteered(
 		props.mainIndicators,
@@ -300,7 +397,47 @@ function AdaChartPro(props: AdaChartProProps) {
 		props.drawingBarVisible,
 		resolved.drawingBarVisible,
 	);
+	/**
+	 * The umbrella flag — the one the bar, that bar's toggle and the manager all
+	 * answer to. A caller sets where a chart starts, and the settings dialog's last
+	 * switch is where a reader answers for themselves; the prop wins the value back
+	 * on a change, exactly as it does for the values above.
+	 *
+	 * The two switches below it only ever narrow this one: a manager still needs
+	 * its own flag, and a bar still needs to be shown.
+	 *
+	 * 总开关 —— 画线栏、那条栏的开关与管理器共同回答的那一个。调用方决定图表从哪里开始，设置对话框
+	 * 最后一行开关则是读者自己作答的地方；prop 变化时把取值收回，与上面那些值完全一样。
+	 *
+	 * 它下面那两个开关只会收窄它：管理器仍需自己的开关，栏仍需被显示出来。
+	 */
+	const [drawingEnabled, setDrawingEnabled] = useSteered(
+		props.drawing,
+		resolved.drawing,
+	);
+
 	const [tool, setTool] = useState<string | null>(null);
+	/**
+	 * A tool is a selection made on the drawing bar, and the bar exists only while
+	 * drawing does — so the flag flipping retires the selection, during render.
+	 *
+	 * It has to be retired rather than merely ignored. `tool` is what the arming
+	 * effect keys on, so a selection left standing behind a hidden bar would draw a
+	 * shape at the next click; and a reader cannot have picked anything while the
+	 * bar was away, so there is no intent to restore. Both directions clear it,
+	 * which is why this is a `seen` compare rather than a one-way reset.
+	 *
+	 * 工具是在画线栏上做出的选择，而那条栏只在画线存在时存在 —— 因此开关翻转就在渲染期退掉这个选择。
+	 *
+	 * 必须真的退掉而不是听之任之。`tool` 正是选中效果（arming effect）的依赖，因此一个留在隐藏的栏
+	 * 背后的选择会在下一次点击时画出一个形状；而栏不在时读者不可能选过任何东西，没有任何意图需要恢复。
+	 * 两个方向都清掉它，这正是这里用 `seen` 比较而不是单向重置的原因。
+	 */
+	const [seenDrawing, setSeenDrawing] = useState(drawingEnabled);
+	if (seenDrawing !== drawingEnabled) {
+		setSeenDrawing(drawingEnabled);
+		setTool(null);
+	}
 	/**
 	 * The drawing layer's own settings, moved by the drawing bar. `mode` is the
 	 * snapping behaviour of the next overlay; `locked` and `visible` describe the
@@ -312,6 +449,40 @@ function AdaChartPro(props: AdaChartProProps) {
 	const [overlayMode, setOverlayMode] = useState<OverlayMode>("weak_magnet");
 	const [overlayLocked, setOverlayLocked] = useState(false);
 	const [overlayVisible, setOverlayVisible] = useState(true);
+	/**
+	 * The drawing manager's inventory: what is on the chart, as the chart holds
+	 * it, plus the names the reader has given those drawings, plus which one the
+	 * canvas has selected.
+	 *
+	 * The rows are read back off the instance rather than assembled from what we
+	 * created, because that is the only list that is complete: a caller may draw
+	 * through `api.chart()` directly, and `removeOverlay` answers to a filter
+	 * rather than to an id, so "what exists now" is a question only the chart can
+	 * answer. See {@link refreshManagedOverlays}.
+	 *
+	 * Names are held here rather than written onto the overlays: `extendData` is
+	 * the only field a name could live in, and it belongs to whoever created the
+	 * overlay — a managed name that clobbers a caller's own data is a worse trade
+	 * than a name that lives and dies with this component.
+	 *
+	 * 画线管理器的清单：图表上有什么（以图表自己的说法），加上读者给这些画线取的名字，以及画布选中的
+	 * 是哪一条。
+	 *
+	 * 各行是从实例读回来的，而不是由我们创建时留下的记录拼出的，因为只有前者是完整的清单：调用方可能
+	 * 直接用 `api.chart()` 画线，而 `removeOverlay` 只认过滤条件而不认某个 id，因此「现在有什么」只有
+	 * 图表能回答。见 {@link refreshManagedOverlays}。
+	 *
+	 * 名字存在这里而不是写到 overlay 上：唯一能安放名字的字段是 `extendData`，而它属于创建那条 overlay
+	 * 的人 —— 一个会把调用方自己的数据冲掉的托管名称，比一个与本组件同生共死的名称要糟得多。
+	 */
+	const [managedOverlays, setManagedOverlays] = useState<
+		Array<Omit<AdaChartProDrawingRow, "label">>
+	>([]);
+	const [overlayNames, setOverlayNames] = useState<Record<string, string>>({});
+	/** The overlay the canvas has selected. Only the canvas can start a selection — v10 has no API for it. 画布已选中的 overlay。只有画布能发起选中 —— v10 没有对应 API。 */
+	const [selectedOverlayId, setSelectedOverlayId] = useState<string | null>(null);
+	/** Whether the manager's panel is open. Its availability is the feature flag; this is only the panel. 管理器面板是否打开。它是否可用取决于功能开关，这里只是面板。 */
+	const [drawingManagerOpen, setDrawingManagerOpen] = useState(false);
 	/**
 	 * The captured chart image the toolbar's dialog is showing, or `null` when no
 	 * dialog is open. Held here rather than in the toolbar because producing it
@@ -397,7 +568,12 @@ function AdaChartPro(props: AdaChartProProps) {
 	// because the wrapped loader is built from it.
 	// `resolved.dataLoader ?? defaultLoader` 是两个稳定引用，因此这个选择不需要自己的
 	// memo —— 它必须在这里而不是更下方做，因为被包装的 loader 由它构建。
-	const dataLoader = resolved.dataLoader ?? defaultLoader;
+	// Annotated rather than inferred: the two branches would otherwise unite into
+	// `AdaChartProDataLoader | OkxDataLoader`, and `OkxDataLoader` does not declare
+	// the optional `resolveSymbol` this layer reads below.
+	// 写明注解而非推断：否则两个分支会合并成 `AdaChartProDataLoader | OkxDataLoader`，
+	// 而 `OkxDataLoader` 没有声明本层下方要读的可选 `resolveSymbol`。
+	const dataLoader: AdaChartProDataLoader = resolved.dataLoader ?? defaultLoader;
 
 	/**
 	 * The loader the chart is actually handed while the current one is always the
@@ -441,6 +617,110 @@ function AdaChartPro(props: AdaChartProProps) {
 	);
 
 	/**
+	 * The instrument the chart is handed, or `null` while a name is still being
+	 * resolved.
+	 *
+	 * `null` is not "no instrument", it is "not yet", and it is what keeps the
+	 * chart from being built on a guess: `AdaChart` asks its loader for a window
+	 * the moment it exists, so a chart raised on an unresolved name would fetch
+	 * bars for a ticker the venue may never have heard of, and that answer would
+	 * have to be thrown away a moment later. The spinner already standing in for
+	 * "waiting for data" covers this stall too.
+	 *
+	 * It is only ever `null` for the *first* instrument. A later one leaves the
+	 * current instrument on screen until its own resolution lands, so swapping
+	 * instruments never tears the chart — and everything drawn on it — down.
+	 *
+	 * 图表拿到的标的；某个名称还在解析中时为 `null`。
+	 *
+	 * `null` 不是「没有标的」，而是「还没有」，正是它让图表不会建在一个猜测上：`AdaChart`
+	 * 一存在就向 loader 索要一个窗口，因此建在一个尚未解析的名称上的图表，会为一个数据源可能
+	 * 从未听说过的 ticker 取 K 线，而那份答案片刻之后就得丢掉。已经在代表「等数据」的加载动画
+	 * 同样覆盖这段等待。
+	 *
+	 * 它只会在*第一个*标的上为 `null`。之后的标的会让当前标的留在屏幕上，直到它自己的解析落地，
+	 * 因此换标的永远不会把图表 —— 连同画在上面的一切 —— 拆掉。
+	 */
+	const [symbol, setSymbol] = useState<SymbolInfo | null>(() =>
+		typeof resolved.symbolRequest === "string" &&
+		resolved.dataLoader?.resolveSymbol
+			? null
+			: resolved.symbol,
+	);
+
+	/**
+	 * Turns the requested instrument into the one the chart is handed.
+	 *
+	 * An object needs no loader: every field the caller left out is filled from
+	 * the defaults, which is what the layer has always done for a partial symbol.
+	 * A name needs one only when the loader offers `resolveSymbol`; without it the
+	 * name *is* the ticker, which is the only reading v10 itself makes of a name.
+	 *
+	 * `live` is the whole of the race protection. A name that changes while an
+	 * answer is in flight retires the older run, so the last instrument asked for
+	 * is the one that lands — the alternative is an earlier venue answering after
+	 * a later one and quietly undoing the reader's choice.
+	 *
+	 * 把被要求的标的变成交给图表的那个。
+	 *
+	 * 对象不需要 loader：调用方没写的每个字段都由默认值补齐，这也正是本层对局部标的一贯做法。
+	 * 名称只在 loader 提供 `resolveSymbol` 时才需要它；没有它，名称*就是* ticker，这也是 v10
+	 * 自己对名称的唯一读法。
+	 *
+	 * `live` 就是竞态保护的全部。答案在路上时改变名称会作废较早的那次运行，因此最后被要求的标的
+	 * 才是落地的那个 —— 否则先前的数据源可能在后来的那次之后作答，把读者的选择悄悄撤销。
+	 */
+	useEffect(() => {
+		const resolve = dataLoader.resolveSymbol;
+		if (typeof symbolRequest !== "string" || resolve === undefined) {
+			// The no-venue branch is a derivation, and the rule reads it as a
+			// needless render. It cannot be moved into render: the state it writes
+			// is also what a *later* name keeps on screen while its venue answers,
+			// so the object case has to record itself here for that name to look
+			// back on. The other branch is the external system this effect is
+			// really for.
+			// 无数据源的那个分支是一次推导，规则把它读成多余的渲染。它挪不进渲染期：它写入的
+			// 状态同时也是*后来的*名称在数据源作答期间留在屏幕上的东西，因此对象这一支必须在
+			// 这里记下自己，那个名称才回顾得到。另一支才是本 effect 真正为之而设的外部系统。
+			// oxlint-disable-next-line react/set-state-in-effect
+			setSymbol(symbolInfoFrom(symbolRequest));
+			return;
+		}
+		let live = true;
+		void resolveAdaChartProSymbol(dataLoader, resolve, symbolRequest).then(
+			(next) => {
+				if (live) setSymbol(next);
+			},
+			(error) => {
+				if (!live) return;
+				// Failing soft, like a history page does: a name the venue cannot
+				// place is still a name, and refusing to draw anything would be a
+				// worse answer than drawing it under that name.
+				// 像历史翻页那样软失败：数据源认不出的名称仍然是个名称，什么都不画比按这个名字画
+				// 更糟。
+				console.warn(
+					"[AdaChartPro] resolveSymbol failed; reading the name as the ticker.",
+					error,
+				);
+				setSymbol(symbolInfoFrom(symbolRequest));
+			},
+		);
+		return () => {
+			live = false;
+		};
+	}, [symbolRequest, dataLoader]);
+
+	/**
+	 * What the chrome shows: the instrument on screen, or the local reading of the
+	 * one still being resolved. The toolbar should name what the reader asked for
+	 * rather than go blank while a venue is answering.
+	 *
+	 * 外围显示的东西：屏幕上的标的，或那个仍在解析中的标的的本地读法。工具栏应当说出读者要的是
+	 * 什么，而不是在数据源作答时变成一片空白。
+	 */
+	const displaySymbol = symbol ?? resolved.symbol;
+
+	/**
 	 * The values as they stand this render, read by the imperative API — which
 	 * must keep one identity for the chart's whole life.
 	 *
@@ -452,7 +732,7 @@ function AdaChartPro(props: AdaChartProProps) {
 		theme,
 		locale,
 		timezone,
-		symbol,
+		symbol: displaySymbol,
 		period,
 		tool,
 	});
@@ -463,7 +743,7 @@ function AdaChartPro(props: AdaChartProProps) {
 			theme,
 			locale,
 			timezone,
-			symbol,
+			symbol: displaySymbol,
 			period,
 			tool,
 		};
@@ -487,6 +767,77 @@ function AdaChartPro(props: AdaChartProProps) {
 		drawingRef.current.mode = overlayMode;
 		drawingRef.current.lock = overlayLocked;
 	}, [overlayMode, overlayLocked]);
+
+	/**
+	 * The manager's feature flag, held where the overlay bridge can read it without
+	 * naming it as a dependency. The bridge is built into the overlay at creation
+	 * time, and that creation is an *effect keyed on the armed tool* — re-running it
+	 * would take away the overlay being drawn. A flag that arrived as a dependency
+	 * would therefore cost the reader the line they were halfway through.
+	 *
+	 * 画线管理器的功能开关，放在 overlay 事件桥能读到、却不必把它列为依赖的地方。事件桥是在创建
+	 * overlay 时写进去的，而那次创建是一个*以已选工具为依赖的 effect* —— 重跑它会把正在画的那条
+	 * overlay 收走。因此若让这个开关作为依赖传进来，代价就是读者画到一半的那条线。
+	 *
+	 * The umbrella narrows it: a panel that accounts for what has been drawn cannot
+	 * outlive the surface that draws, so `drawing: false` means no panel whichever
+	 * way {@link AdaChartProProps.drawingManager} is set.
+	 *
+	 * 总开关收窄它：一块清点已画对象的面板不可能活得比绘制它的界面更久，因此 `drawing: false` 意味着
+	 * 没有面板，无论 {@link AdaChartProProps.drawingManager} 怎么设。
+	 */
+	const drawingManagerEnabled = drawingEnabled && resolved.drawingManager;
+	const managerEnabledRef = useRef(drawingManagerEnabled);
+	useEffect(() => {
+		managerEnabledRef.current = drawingManagerEnabled;
+	}, [drawingManagerEnabled]);
+
+	/**
+	 * Re-reads the chart's overlays into the manager's rows.
+	 *
+	 * Everything that changes a drawing calls this rather than editing the rows it
+	 * already has. The chart is the one place that knows what exists — an overlay
+	 * may be removed by a filter that names several, or by the caller through the
+	 * raw instance — so a list maintained beside it would be a second answer to a
+	 * question that already has one.
+	 *
+	 * The bridge below keeps the rows live between calls; the refresh the toolbar's
+	 * toggle performs is what puts drawings into the list that predate the bridge,
+	 * since a drawing made while the flag was off carries no callbacks.
+	 *
+	 * A drawing with no points yet is left out: an armed tool creates its overlay
+	 * immediately, so a row would appear the moment a tool is clicked and vanish
+	 * again if the reader changes their mind — see the arming effect, which removes
+	 * exactly that empty draft.
+	 *
+	 * 把图表上的 overlay 重新读成管理器的各行。
+	 *
+	 * 凡是会改变画线的操作都调它，而不是去改手上已有的那些行。图表是唯一知道「存在什么」的地方 ——
+	 * 一条 overlay 可能被一个点名多条图形的过滤条件移除，也可能被调用方经原始实例移除 —— 因此旁边
+	 * 再维护一份清单，等于对同一个已有答案的问题给出第二个答案。
+	 *
+	 * 下面的事件桥负责在两次调用之间让各行保持新鲜；工具栏开关所做的那次刷新，负责把事件桥之前就
+	 * 存在的画线放进清单，因为开关关闭时画出的线不带任何回调。
+	 *
+	 * 还没有落锚点的画线不在其列：选中工具会立刻创建它的 overlay，因此若把空画线也列出来，一点工具
+	 * 就会出现一行、读者改主意又消失 —— 见选中工具的那个 effect，它移除的正是这条空草稿。
+	 */
+	const refreshManagedOverlays = useCallback(() => {
+		if (!managerEnabledRef.current) return;
+		const chart = chartRef.current;
+		if (!chart) return;
+		setManagedOverlays(
+			chart
+				.getOverlays()
+				.filter((overlay) => overlay.points.length > 0)
+				.map((overlay) => ({
+					id: overlay.id,
+					name: overlay.name,
+					locked: overlay.lock,
+					visible: overlay.visible,
+				})),
+		);
+	}, []);
 
 	// The default feed is ours to stop; a caller-supplied one is the caller's.
 	// 默认数据源由我们停止；调用方提供的那个由调用方负责。
@@ -576,8 +927,8 @@ function AdaChartPro(props: AdaChartProProps) {
 	 * 见 {@link resolveAdaChartProProps}，它会从 `BASE-QUOTE` 形式的代码里推导一个。
 	 */
 	const priceUnit =
-		typeof symbol.priceCurrency === "string"
-			? symbol.priceCurrency.toUpperCase()
+		typeof displaySymbol.priceCurrency === "string"
+			? displaySymbol.priceCurrency.toUpperCase()
 			: "";
 
 	/**
@@ -590,7 +941,7 @@ function AdaChartPro(props: AdaChartProProps) {
 	const api = useMemo<AdaChartProApi>(
 		() => ({
 			chart: () => chartRef.current,
-			setSymbol,
+			setSymbol: setSymbolRequest,
 			getSymbol: () => stateRef.current.symbol,
 			setPeriod,
 			getPeriod: () => stateRef.current.period,
@@ -619,7 +970,7 @@ function AdaChartPro(props: AdaChartProProps) {
 		// 函数转手返回的 `useState` setter，除了这个数组，再没有别处能告诉读者（或 linter）
 		// 它们是稳定的。
 		[
-			setSymbol,
+			setSymbolRequest,
 			setPeriod,
 			setTheme,
 			setLocale,
@@ -679,7 +1030,43 @@ function AdaChartPro(props: AdaChartProProps) {
 			groupId: ADACHARTPRO_DRAWING_GROUP_ID,
 			mode: drawingRef.current.mode,
 			lock: drawingRef.current.lock,
-			onDrawEnd: () => setTool(null),
+			onDrawEnd: () => {
+				setTool(null);
+				refreshManagedOverlays();
+			},
+			// The manager's bridge. Overlay events do **not** arrive through
+			// `subscribeAction` — v10's action list cannot see an overlay — so the
+			// only way back into React state is on the overlay itself, and it has to
+			// be attached as the overlay is created.
+			//
+			// Attached only while the flag is on, read through the ref rather than
+			// listed as a dependency: this effect creates an overlay, so re-running it
+			// for a flag change would take the half-drawn one away. A drawing made
+			// while the flag is off carries no bridge, which is what the refresh on
+			// opening the panel exists to cover.
+			//
+			// 管理器的桥。overlay 的事件**不**经 `subscribeAction` 传来 —— v10 的动作清单看不见
+			// overlay —— 因此回到 React 状态只有写在 overlay 上这一条路，而且必须在创建它的那一刻
+			// 一起写入。
+			//
+			// 只在开关打开时挂上，且经 ref 读取而不是列为依赖：本 effect 会创建 overlay，因此为开关
+			// 变化重跑它会把正在画的那条收走。开关关闭时画出的线不带桥，这正是「打开面板时刷新一次」
+			// 要覆盖的情形。
+			...(managerEnabledRef.current
+				? {
+						onRemoved: refreshManagedOverlays,
+						onSelected: ({ overlay }: OverlayEvent<unknown>) =>
+							setSelectedOverlayId(overlay.id),
+						// Guarded by id so a stale `onDeselected` from an overlay that
+						// was already replaced cannot clear a newer selection.
+						// 按 id 校验，使一条已被替换的 overlay 迟到的 `onDeselected` 无法清掉
+						// 更新的那次选中。
+						onDeselected: ({ overlay }: OverlayEvent<unknown>) =>
+							setSelectedOverlayId((current) =>
+								current === overlay.id ? null : current,
+							),
+					}
+				: {}),
 		};
 		const created = chart.createOverlay(create);
 		const id = typeof created === "string" ? created : null;
@@ -691,7 +1078,7 @@ function AdaChartPro(props: AdaChartProProps) {
 			const [draft] = chart.getOverlays({ id });
 			if (draft && draft.points.length === 0) chart.removeOverlay({ id });
 		};
-	}, [tool, ready]);
+	}, [tool, ready, refreshManagedOverlays]);
 
 	/**
 	 * The bar's three toggles are layer state: each lands on every overlay the
@@ -711,7 +1098,19 @@ function AdaChartPro(props: AdaChartProProps) {
 			lock: overlayLocked,
 			visible: overlayVisible,
 		});
-	}, [overlayMode, overlayLocked, overlayVisible, ready]);
+		// The manager's rows carry each overlay's lock and visibility, and this
+		// writes both on every overlay at once — so the rows are stale from here
+		// unless they are read again.
+		// 管理器的各行带着每条 overlay 的锁定与可见性，而这里一次改掉所有 overlay 的这两项 ——
+		// 因此除非重读一次，各行从此就是过期的。
+		refreshManagedOverlays();
+	}, [
+		overlayMode,
+		overlayLocked,
+		overlayVisible,
+		ready,
+		refreshManagedOverlays,
+	]);
 
 	/**
 	 * Clearing drops everything the bar drew and disarms the tool with it: the
@@ -724,7 +1123,132 @@ function AdaChartPro(props: AdaChartProProps) {
 	const handleRemoveAll = useCallback(() => {
 		chartRef.current?.removeOverlay({ groupId: ADACHARTPRO_DRAWING_GROUP_ID });
 		setTool(null);
-	}, []);
+		refreshManagedOverlays();
+	}, [refreshManagedOverlays]);
+
+	/**
+	 * The manager's rows: the inventory plus the names the reader has given, with
+	 * the tool's own label standing in until a drawing is named. One object per
+	 * row rather than a lookup at render, so the panel can be handed its props and
+	 * nothing else.
+	 *
+	 * 管理器的各行：清单加上读者给的名字；被命名之前，由工具自己的文案代为显示。每行一个对象而非
+	 * 渲染时再去查表，使面板拿到的就是它的全部 props。
+	 */
+	const managerRows = useMemo<readonly AdaChartProDrawingRow[]>(
+		() =>
+			managedOverlays.map((overlay) => ({
+				...overlay,
+				label:
+					overlayNames[overlay.id] ??
+					drawingToolLabel(locale, overlay.name),
+			})),
+		[managedOverlays, overlayNames, locale],
+	);
+
+	/**
+	 * The panel's five actions are all "the chart said this, believe it": each
+	 * calls the instance and then re-reads it, so a lock that the engine refused
+	 * cannot be shown as taken. Rename is the only one that writes somewhere other
+	 * than the chart — the name lives in this layer, see the state's comment — and
+	 * it is the only one that needs to be read back through the rows rather than
+	 * through the chart.
+	 *
+	 * 面板的五个操作全都是「图表说了算，信它」：每个都先调用实例再重读，因此被引擎拒绝的锁定不会
+	 * 被显示为已锁上。重命名是唯一写到图表以外之处的 —— 名字存在本层，见状态的注释 —— 也是唯一
+	 * 需要靠各行读回来、而不是靠图表读回来的。
+	 */
+	const handleManagerRename = useCallback(
+		(id: string, label: string) => {
+			setOverlayNames((current) => ({ ...current, [id]: label }));
+		},
+		[],
+	);
+
+	const handleManagerToggleLock = useCallback(
+		(id: string) => {
+			const chart = chartRef.current;
+			if (!chart) return;
+			const [overlay] = chart.getOverlays({ id });
+			if (!overlay) return;
+			chart.overrideOverlay({ id, lock: !overlay.lock });
+			refreshManagedOverlays();
+		},
+		[refreshManagedOverlays],
+	);
+
+	const handleManagerToggleVisible = useCallback(
+		(id: string) => {
+			const chart = chartRef.current;
+			if (!chart) return;
+			const [overlay] = chart.getOverlays({ id });
+			if (!overlay) return;
+			chart.overrideOverlay({ id, visible: !overlay.visible });
+			refreshManagedOverlays();
+		},
+		[refreshManagedOverlays],
+	);
+
+	/**
+	 * One rung up the overlay's stack rather than a computed value: raising a line
+	 * above a tall one could need a long jump, and the engine does not say which
+	 * `zLevel`s are taken — a guaranteed step is more use than a guessed one.
+	 *
+	 * 在 overlay 的栈上抬一级，而不是取一个算出来的值：要把一条线抬到很高的那条之上可能得跳很远，
+	 * 而引擎不会说明哪些 `zLevel` 已被占用 —— 一个保证生效的步进，比一个猜出来的数值有用。
+	 */
+	const handleManagerBringToFront = useCallback(
+		(id: string) => {
+			const chart = chartRef.current;
+			if (!chart) return;
+			const [overlay] = chart.getOverlays({ id });
+			if (!overlay) return;
+			chart.overrideOverlay({ id, zLevel: overlay.zLevel + 1 });
+			refreshManagedOverlays();
+		},
+		[refreshManagedOverlays],
+	);
+
+	/**
+	 * `removeOverlay` answers to a filter rather than to an id, so removing is
+	 * scoped by the id — the same escape `@klinecharts/pro` uses to keep "clear
+	 * all" from meaning "clear everything". The id-filter still goes through the
+	 * chart, because that is where "does it exist" is answered.
+	 *
+	 * `removeOverlay` 只认过滤条件而不认某个 id，因此删除以 id 限定范围 —— 与 `@klinecharts/pro`
+	 * 让「清空全部」不至于变成「清空一切」所用的同一种脱身法。id 过滤仍经图表走，因为「它是否存在」
+	 * 只有那里有答案。
+	 */
+	const handleManagerDelete = useCallback(
+		(id: string) => {
+			chartRef.current?.removeOverlay({ id });
+			setOverlayNames((current) => {
+				if (!(id in current)) return current;
+				const next = { ...current };
+				delete next[id];
+				return next;
+			});
+			setSelectedOverlayId((current) => (current === id ? null : current));
+			refreshManagedOverlays();
+		},
+		[refreshManagedOverlays],
+	);
+
+	/**
+	 * Opening the panel first reads the chart: a drawing made while the flag was
+	 * off carries no bridge, so nothing has kept its row fresh — see the state's
+	 * comment. Closing reads it too rather than being special-cased: the read is
+	 * idempotent, and a branch that skipped it would be a second thing to keep
+	 * true.
+	 *
+	 * 打开面板先读一次图表：开关关闭时画出的线不带桥，因此没有东西在保持它的行新鲜 —— 见状态的
+	 * 注释。关闭时同样读一次，而不是为它单开一条分支：这次读取是幂等的，而一条跳过它的分支就是
+	 * 又多了一件要保证为真的事。
+	 */
+	const handleToggleDrawingManager = useCallback(() => {
+		setDrawingManagerOpen((current) => !current);
+		refreshManagedOverlays();
+	}, [refreshManagedOverlays]);
 
 	/**
 	 * The toolbar's drawing-bar toggle. The bar is chrome, so showing it does not
@@ -984,8 +1508,11 @@ function AdaChartPro(props: AdaChartProProps) {
 				mainIndicators={mainIndicators}
 				subIndicators={subIndicators}
 				symbols={resolved.symbols}
-				symbol={symbol}
+				symbol={displaySymbol}
+				drawing={drawingEnabled}
 				drawingBarVisible={drawingBarVisible}
+				drawingManager={drawingManagerEnabled}
+				drawingManagerOpen={drawingManagerOpen}
 				timezone={timezone}
 				isFullscreen={isFullscreen}
 				screenshot={screenshot}
@@ -993,6 +1520,7 @@ function AdaChartPro(props: AdaChartProProps) {
 				onScreenshotClose={closeScreenshot}
 				onFullscreenToggle={handleFullscreenToggle}
 				onToggleDrawingBar={handleToggleDrawingBar}
+				onToggleDrawingManager={handleToggleDrawingManager}
 				onSettingsOpen={handleSettingsOpen}
 				onTimezoneOpen={() => setTimezoneOpen(true)}
 				onThemeChange={() => setTheme(theme === "dark" ? "light" : "dark")}
@@ -1001,10 +1529,10 @@ function AdaChartPro(props: AdaChartProProps) {
 					setMainIndicators(main);
 					setSubIndicators(sub);
 				}}
-				onSymbolChange={setSymbol}
+				onSymbolChange={setSymbolRequest}
 			/>
 			<div className="adachart-pro__main">
-				{drawingBarVisible ? (
+				{drawingEnabled && drawingBarVisible ? (
 					<AdaChartProDrawingBar
 						locale={locale}
 						groups={drawingGroups}
@@ -1024,50 +1552,61 @@ function AdaChartPro(props: AdaChartProProps) {
 						<div className="adachart-pro__watermark">{resolved.watermark}</div>
 					) : null}
 					<div className="adachart-pro__chart">
-						<AdaChart
-							// The wrapper, not the raw loader: `AdaChart` installs a loader once
-							// on mount and never again, so the object it is handed has to keep
-							// one identity for the chart's life — see `observedLoader`.
-							//
-							// 传包装器而非原始 loader：`AdaChart` 只在挂载时装一次 loader、
-							// 此后再不更换，因此交给它的对象必须在图表一生中保持同一引用 ——
-							// 见 `observedLoader`。
-							dataLoader={observedLoader}
-							symbol={symbol}
-							period={period}
-							width={resolved.width}
-							height={resolved.height}
-							autoSize={resolved.autoSize}
-							// `transparent`, not the surface colour: anything `AdaChart`
-							// paints is inside `.adachart-pro__chart` and would sit above
-							// the watermark. The surface is `--adacp-surface` on
-							// `.adachart-pro__body` instead — see `adachart-pro.css`.
-							//
-							// 传 `transparent` 而非表面色：`AdaChart` 涂的任何东西都在
-							// `.adachart-pro__chart` 之内，会压在水印之上。表面色改由
-							// `.adachart-pro__body` 上的 `--adacp-surface` 负责 —— 见
-							// `adachart-pro.css`。
-							backgroundColor="transparent"
-							theme={theme}
-							locale={locale}
-							timezone={timezone}
-							indicators={indicators}
-							// The merged tree, not the caller's prop: the legend icons, the
-							// imperative `setStyles` patches and the appearance dialog all
-							// have to reach `AdaChart` through this one tree, because that is
-							// the tree it republishes on every render.
-							//
-							// 传合并后的树而非调用方的属性：图例图标、命令式 `setStyles` 补丁与
-							// 外观对话框都必须经这一棵树到达 `AdaChart`，因为那正是它每次渲染都
-							// 重新下发的树。
-							styles={styles}
-							// Per-period date shape, which v10 would otherwise write with one
-							// template for every bar size.
-							// 各周期的日期形状；v10 否则会对每种周期都用同一个模板。
-							formatter={formatter}
-							onIndicatorTooltipFeatureClick={handleIndicatorFeatureClick}
-							onChartReady={handleChartReady}
-						/>
+						{/* No chart until the instrument is settled. `AdaChart` asks its
+						 * loader for a window the moment it exists, so a chart raised on a
+						 * name that is still resolving would request bars for an instrument
+						 * the venue may not know — see `symbol`. The spinner below stands
+						 * in for the wait.
+						 *
+						 * 标的定下来之前不建图。`AdaChart` 一存在就向 loader 索要一个窗口，
+						 * 因此建在一个仍在解析的名称上的图表会为一个数据源可能不认识的标的
+						 * 取 K 线 —— 见 `symbol`。下面的加载动画代表这段等待。 */}
+						{symbol ? (
+							<AdaChart
+								// The wrapper, not the raw loader: `AdaChart` installs a loader once
+								// on mount and never again, so the object it is handed has to keep
+								// one identity for the chart's life — see `observedLoader`.
+								//
+								// 传包装器而非原始 loader：`AdaChart` 只在挂载时装一次 loader、
+								// 此后再不更换，因此交给它的对象必须在图表一生中保持同一引用 ——
+								// 见 `observedLoader`。
+								dataLoader={observedLoader}
+								symbol={symbol}
+								period={period}
+								width={resolved.width}
+								height={resolved.height}
+								autoSize={resolved.autoSize}
+								// `transparent`, not the surface colour: anything `AdaChart`
+								// paints is inside `.adachart-pro__chart` and would sit above
+								// the watermark. The surface is `--adacp-surface` on
+								// `.adachart-pro__body` instead — see `adachart-pro.css`.
+								//
+								// 传 `transparent` 而非表面色：`AdaChart` 涂的任何东西都在
+								// `.adachart-pro__chart` 之内，会压在水印之上。表面色改由
+								// `.adachart-pro__body` 上的 `--adacp-surface` 负责 —— 见
+								// `adachart-pro.css`。
+								backgroundColor="transparent"
+								theme={theme}
+								locale={locale}
+								timezone={timezone}
+								indicators={indicators}
+								// The merged tree, not the caller's prop: the legend icons, the
+								// imperative `setStyles` patches and the appearance dialog all
+								// have to reach `AdaChart` through this one tree, because that is
+								// the tree it republishes on every render.
+								//
+								// 传合并后的树而非调用方的属性：图例图标、命令式 `setStyles` 补丁与
+								// 外观对话框都必须经这一棵树到达 `AdaChart`，因为那正是它每次渲染都
+								// 重新下发的树。
+								styles={styles}
+								// Per-period date shape, which v10 would otherwise write with one
+								// template for every bar size.
+								// 各周期的日期形状；v10 否则会对每种周期都用同一个模板。
+								formatter={formatter}
+								onIndicatorTooltipFeatureClick={handleIndicatorFeatureClick}
+								onChartReady={handleChartReady}
+							/>
+						) : null}
 					</div>
 					{/* Both overlays are absolute siblings of the chart, so they can be
 					 * dismissed by state alone without touching the canvas. Loading covers
@@ -1105,6 +1644,27 @@ function AdaChartPro(props: AdaChartProProps) {
 							</svg>
 						</div>
 					) : null}
+					{/* The manager is docked inside the body rather than mounted beside the
+					 * chart, because a row is read against the drawing it names. It is
+					 * gated by the flag as well as by its own open state, so turning the
+					 * capability off takes the panel with it however the state is left.
+					 *
+					 * 管理器停靠在 body 内，而不是挂在图表旁边，因为读一行时比对的正是它所命名的
+					 * 那条画线。它同时受功能开关与自身的打开状态约束，因此无论状态留在哪，关掉这项能力
+					 * 都会连面板一起收起。 */}
+					{drawingManagerEnabled && drawingManagerOpen ? (
+						<AdaChartProDrawingManager
+							locale={locale}
+							rows={managerRows}
+							selectedId={selectedOverlayId}
+							onRename={handleManagerRename}
+							onToggleLock={handleManagerToggleLock}
+							onToggleVisible={handleManagerToggleVisible}
+							onBringToFront={handleManagerBringToFront}
+							onDelete={handleManagerDelete}
+							onClose={handleToggleDrawingManager}
+						/>
+					) : null}
 				</div>
 			</div>
 
@@ -1121,8 +1681,10 @@ function AdaChartPro(props: AdaChartProProps) {
 					locale={locale}
 					settings={settings}
 					reverseAxis={reverseAxis}
+					drawing={drawingEnabled}
 					onChange={handleSettingsChange}
 					onReverseAxisChange={setReverseAxis}
+					onDrawingChange={setDrawingEnabled}
 					onClose={() => setSettingsOpen(false)}
 				/>
 			) : null}

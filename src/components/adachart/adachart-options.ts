@@ -105,7 +105,7 @@ interface VolumeOverlayDatum {
  * stated on the template, and stating it would change nothing — the engine's
  * constructor clears the lock `override` sets, so the instrument's precision
  * passes through regardless. What completes an instrument that names none is
- * `AdaChart`'s, at {@link resolveSymbol}. `minValue: 0` is what anchors the bars
+ * `AdaChart`'s, at {@link resolveSymbolInfo}. `minValue: 0` is what anchors the bars
  * at the bottom of their axis instead of at the smallest volume on screen;
  * `calcParams: []` is honest — there is nothing to tune. The bar's colour is
  * resolved per candle from the chart's own indicator-bar style rather than baked
@@ -120,7 +120,7 @@ interface VolumeOverlayDatum {
  * 也正是它决定了这个研究的数字怎么书写：引擎会把标的的 `volumePrecision` 交给任何成交量序列，
  * 因此本叠加的图例与 `VOL` 的读法一致。精度刻意**不**写在模板上，而写了也不会改变什么 ——
  * 引擎的构造函数会清掉 `override` 设下的那把锁，标的的精度照样穿过来。标的没声明精度时由谁来补，
- * 是 `AdaChart` 的事，见 {@link resolveSymbol}。`minValue: 0` 让柱子锚在其坐标轴的底端，
+ * 是 `AdaChart` 的事，见 {@link resolveSymbolInfo}。`minValue: 0` 让柱子锚在其坐标轴的底端，
  * 而不是锚在屏幕上最小的成交量处；`calcParams: []` 是诚实的 —— 这里没有任何可调项。柱色逐根从图表
  * 自身的指标柱样式解析，而非写死，因此叠加与 `VOL` 一样跟随主题。
  *
@@ -488,7 +488,7 @@ const DEFAULT_VOLUME_PRECISION =
  * 成交量最小变动单位，正是为了让引擎算出的那个数字是对的。价格精度则照调用方所给：引擎自己的兜底值
  * 两位小数已经可用，需要别的精度就传 `symbol.pricePrecision`。
  */
-export function resolveSymbol(
+export function resolveSymbolInfo(
 	props: AdaChartResolvedProps,
 ): Partial<SymbolInfo> {
 	return {

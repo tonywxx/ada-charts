@@ -406,6 +406,48 @@ export const WithIndicators: Story = {
 export const NoDrawingBar: Story = { args: { drawingBarVisible: false } };
 
 /**
+ * 起手就是「不画线」：`drawing: false` 播种出的图表，左侧栏、栏开关与「Drawings」入口一起
+ * 不存在，工具栏上再也找不到任何与画线有关的东西。注意这与上面那条的区别 —— 上面那条只是把栏
+ * 藏起来，开关还在，读者随时可以把它放回来；这里这条是读者自己刚在设置里关掉画线之后的模样。
+ *
+ * 开关本身在设置对话框里（齿轮 → 最后一行「Drawing」），它比它控制的那三块外围活得久：刚关掉
+ * 画线的读者必须能从同一个对话框再打开它。用设置里的那一行关掉画线，得到的就是这条 story
+ * 的样子。
+ *
+ * 已经画好的对象留在图上：一条画线是数据，删除它是管理器的事，不是一个开关的事。下面的
+ * `DrawingManager` 才是把它们拿掉的地方。
+ *
+ * Starting with no drawing at all: `drawing: false` seeds a chart whose left-hand
+ * bar, bar toggle and "Drawings" entry are all absent, so nothing drawing-related
+ * is left in the chrome. It differs from the story above — there the bar is merely
+ * hidden and its toggle is still there to bring it back — and it is what the chart
+ * looks like just after a reader has switched drawing off in Settings.
+ *
+ * The switch itself lives in the settings dialog (gear → last row, "Drawing") and
+ * outlives the three pieces of chrome it controls: a reader who has just switched
+ * drawing off has to be able to switch it back on from that same dialog. Switching
+ * it off there produces exactly this story.
+ *
+ * Shapes already drawn stay on the chart: a drawing is data, and removing it is
+ * the manager's job, not a switch's. The `DrawingManager` story is where that
+ * happens.
+ */
+export const NoDrawing: Story = { args: { drawing: false } };
+
+/**
+ * 画线管理器：工具栏上的「Drawings」打开右侧面板，逐条列出已画对象，并给出重命名、锁定、
+ * 显示/隐藏、置于顶层与删除。面板是一份清单，因此要先画点什么 —— 在画线栏里画一条线，
+ * 它才会出现在列表里；打开面板后照旧可以在图上点选，被选中的那一行会高亮。
+ *
+ * The drawing manager: the toolbar's "Drawings" button opens a panel on the right
+ * listing every shape that has been drawn, each with rename, lock, show/hide,
+ * bring-to-front and delete. It is an inventory, so draw something first — a shape
+ * appears once the drawing bar has placed it. Selecting on the canvas still works
+ * while the panel is open, and highlights the row it belongs to.
+ */
+export const DrawingManager: Story = { args: { drawingManager: true } };
+
+/**
  * 一分钟实时行情。Live one-minute candles.
  */
 export const MinuteBars: Story = {

@@ -2,7 +2,7 @@ import type { DataLoaderGetBarsParams, KLineData, SymbolInfo } from "klinecharts
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { OKX_HISTORY_LIMIT } from "../../okx";
 import { OkxStream } from "../../okx-stream";
-import { OkxDataLoader, observeBars } from "./adachart-pro-datafeed";
+import { OkxDataLoader, observeBars, resolveAdaChartProSymbol } from "./adachart-pro-datafeed";
 
 /**
  * The paging half of the OKX feed: which of OKX's two keys each direction uses,
@@ -270,6 +270,92 @@ describe("OkxDataLoader.subscribeBar", () => {
 		} finally {
 			vi.useRealTimers();
 		}
+	});
+});
+
+/**
+ * The cache in front of `resolveSymbol`. Its whole job is to make a name cost one
+ * question per loader, and the two ways that can go wrong are the ones asserted
+ * here: asking a second time while the first is still out, and holding on to an
+ * answer that never came.
+ *
+ * `OkxDataLoader` is deliberately not the loader under test — a bare object is
+ * what makes a test's loader its own cache key, so no two tests can see each
+ * other's answers.
+ *
+ * `resolveSymbol` 面前的那层缓存。它的全部职责是让一个名字在每 loader 身上只花一次询问，而两
+ * 种出错方式正是这里断言的两件事：第一次还在路上时又问第二次，以及留下一个从未到来的答案。
+ *
+ * 这里刻意不用 `OkxDataLoader` 作被测 loader —— 裸对象才能让每个测试的 loader 成为自己的缓存键，
+ * 从而没有两个测试能看到彼此的答案。
+ */
+describe("resolveAdaChartProSymbol", () => {
+	/** A loader whose only role is to be a distinct cache key. 只充当一个独特缓存键的 loader。 */
+	function loader(): Parameters<typeof resolveAdaChartProSymbol>[0] {
+		return {} as Parameters<typeof resolveAdaChartProSymbol>[0];
+	}
+
+	it("asks the venue once for a name, however many callers want it", async () => {
+		const key = loader();
+		const resolve = vi.fn(async (name: string): Promise<SymbolInfo> => ({
+			ticker: name,
+			pricePrecision: 2,
+			volumePrecision: 2,
+		}));
+
+		// Two at once is the multi-window case: every window mounts, names the same
+		// instrument, and none of them should cost a second round trip.
+		// 同时两次就是多窗口的情形：每个窗口都挂载、都点名同一个标的，而它们都不该多花一次往返。
+		const [first, second] = await Promise.all([
+			resolveAdaChartProSymbol(key, resolve, "BTC-USDT"),
+			resolveAdaChartProSymbol(key, resolve, "BTC-USDT"),
+		]);
+		// Later ones hit the cache the first one filled.
+		// 更晚的那些命中第一个填好的缓存。
+		const third = await resolveAdaChartProSymbol(key, resolve, "BTC-USDT");
+
+		expect(resolve).toHaveBeenCalledTimes(1);
+		expect(second).toBe(first);
+		expect(third).toBe(first);
+	});
+
+	it("keeps two loaders' instruments apart, even under one spelling", async () => {
+		// Two venues may well use one ticker for different instruments, which is why
+		// the cache is keyed by the loader and not by the name.
+		// 两个数据源完全可能用同一个代码指向不同的标的，这正是缓存按 loader 而非按名字作键的原因。
+		const resolve = vi.fn(async (name: string): Promise<SymbolInfo> => ({
+			ticker: name,
+			pricePrecision: 2,
+			volumePrecision: 2,
+		}));
+		await Promise.all([
+			resolveAdaChartProSymbol(loader(), resolve, "BTC-USDT"),
+			resolveAdaChartProSymbol(loader(), resolve, "BTC-USDT"),
+		]);
+		expect(resolve).toHaveBeenCalledTimes(2);
+	});
+
+	it("forgets a rejected resolution, so a venue that was down is asked again", async () => {
+		// Holding the rejection would make one bad moment permanent for the page's
+		// life: every later request for that name would replay the same failure.
+		// 留下这次拒绝会让一个糟糕的瞬间在页面的余生里变成永久：之后每一次对该名字的请求都会重放
+		// 同一次失败。
+		const key = loader();
+		const resolve = vi
+			.fn<(name: string) => Promise<SymbolInfo>>()
+			.mockRejectedValueOnce(new Error("offline"))
+			.mockResolvedValue({ ticker: "BTC-USDT", pricePrecision: 2, volumePrecision: 2 });
+
+		await expect(resolveAdaChartProSymbol(key, resolve, "BTC-USDT")).rejects.toThrow(
+			"offline",
+		);
+		// The deletion is chained onto the rejection, so it lands one microtask later.
+		// 删除挂在这次拒绝之后，因此晚一个微任务落地。
+		await Promise.resolve();
+		await expect(
+			resolveAdaChartProSymbol(key, resolve, "BTC-USDT"),
+		).resolves.toMatchObject({ ticker: "BTC-USDT" });
+		expect(resolve).toHaveBeenCalledTimes(2);
 	});
 });
 

@@ -256,6 +256,33 @@ export function drawingMessage(locale: string, key: string): string {
 }
 
 /**
+ * The label for a drawing tool's name — the reverse of the table above.
+ *
+ * The drawing bar is handed `{name, labelKey}` pairs, so it never has to look
+ * anything up. The drawing manager is handed overlays off the chart, which carry
+ * the `klinecharts` name and nothing else, so it has to come back the other way.
+ *
+ * A name that is in no group is returned as it stands rather than as an empty
+ * label: an overlay may have been created by the caller through the raw chart,
+ * and the engine's own name for it is still more use than a blank row.
+ *
+ * 画线工具名称对应的文案 —— 也就是上面那张表的反查。
+ *
+ * 画线栏拿到的是 `{name, labelKey}` 对，因此从不需要查表。画线管理器拿到的是图表上的 overlay，
+ * 它们只带 `klinecharts` 的名称，于是必须反着查。
+ *
+ * 不属于任何组的名称原样返回，而不是给一个空文案：overlay 可能是调用方经原始图表创建的，
+ * 而引擎给它的那个名字总比一行空白有用。
+ */
+export function drawingToolLabel(locale: string, name: string): string {
+	for (const group of ADACHARTPRO_DRAWING_GROUPS) {
+		const found = group.tools.find((item) => item.name === name);
+		if (found) return drawingMessage(locale, found.labelKey);
+	}
+	return name;
+}
+
+/**
  * The groups to show, filtered by the names the caller allows. An empty
  * `allowed` means "everything" — the same rule the `drawingTools` prop has had
  * all along — and a group whose every tool is filtered out is dropped rather

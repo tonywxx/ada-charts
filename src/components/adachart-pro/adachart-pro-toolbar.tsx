@@ -2,15 +2,22 @@ import type { Period, SymbolInfo } from "klinecharts";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { MAIN_INDICATORS, SUB_INDICATORS } from "../adachart/adachart-window-config";
 import { messageFor } from "./adachart-pro-messages";
-import { periodLabel } from "./adachart-pro-options";
+import {
+	periodLabel,
+	symbolOptionFields,
+	symbolOptionKey,
+	symbolOptionLabel,
+	symbolOptionListLabel,
+	type AdaChartProSymbolOption,
+} from "./adachart-pro-options";
 import { timezoneLabel } from "./adachart-pro-settings";
 
 /**
- * The `AdaChartPro` toolbar: the drawing-bar toggle, period presets, an
- * indicator picker split into main / sub panes, an optional instrument picker,
- * the theme toggle, the settings / timezone pair, and the screenshot /
- * fullscreen pair. It also renders the screenshot dialog, which is where the
- * captured image is previewed and saved.
+ * The `AdaChartPro` toolbar: the drawing-bar toggle, the drawing manager's
+ * toggle, period presets, an indicator picker split into main / sub panes, an
+ * optional instrument picker, the theme toggle, the settings / timezone pair,
+ * and the screenshot / fullscreen pair. It also renders the screenshot dialog,
+ * which is where the captured image is previewed and saved.
  *
  * The picker's two halves list the two groups the window model keeps, rather
  * than one list twice: a study drawn in the instrument's own units goes on the
@@ -30,8 +37,8 @@ import { timezoneLabel } from "./adachart-pro-settings";
  * a value read from the chart instance, both of which the Wrapper holds. This
  * strip merely names the two dialogs it can open.
  *
- * `AdaChartPro` 的工具栏：画线栏开关、周期档位、分主/副图的指标选择、可选的标的选择、主题切换、
- * 设置 / 时区这一对，以及截屏 / 全屏这一对。它还渲染截屏对话框 —— 预览与保存截取图片的地方。
+ * `AdaChartPro` 的工具栏：画线栏开关、画线管理器开关、周期档位、分主/副图的指标选择、可选的标的选择、
+ * 主题切换、设置 / 时区这一对，以及截屏 / 全屏这一对。它还渲染截屏对话框 —— 预览与保存截取图片的地方。
  *
  * 选择器的两半列的是窗口模型维护的两个分组，而不是同一份清单列两遍：以标的自身单位绘制的指标属于
  * 蜡烛面板，不是价格的指标自开一个面板。代价是 `RSI` 这类摆动量不再被*提供*在蜡烛上 —— 它本来也
@@ -48,15 +55,6 @@ import { timezoneLabel } from "./adachart-pro-settings";
 
 /** Which drop panel is open; only one at a time. 当前展开的下拉面板；同时只开一个。 */
 type Panel = "symbol" | "indicators" | null;
-
-/** The instrument's own name for the picker button. 选择器按钮上显示标的自己的名称。 */
-function symbolLabel(symbol: SymbolInfo): string {
-	for (const key of ["shortName", "name", "ticker"] as const) {
-		const value = symbol[key];
-		if (typeof value === "string" && value) return value;
-	}
-	return symbol.ticker;
-}
 
 /** Two periods are the same bar size; identity is not the question. 两个周期是否同一档位；这里问的不是引用相等。 */
 function samePeriod(a: Period, b: Period): boolean {
@@ -88,12 +86,35 @@ export interface AdaChartProToolbarProps {
 	period: Period;
 	mainIndicators: readonly string[];
 	subIndicators: readonly string[];
+	/**
+	 * Whether this chart can be drawn on at all — the umbrella feature flag. Both
+	 * drawing entries leave the strip when it is off: a toggle for a bar that does
+	 * not exist, or a panel for drawings nothing can add, would be a question the
+	 * reader cannot answer. See {@link AdaChartProProps.drawing}.
+	 *
+	 * 这张图表是否可画 —— 总功能开关。关闭时两个画线入口都离开本条：一个并不存在的栏的开关、
+	 * 或一块「没有任何东西能往里加」的画线面板，都是读者回答不了的问题。见
+	 * {@link AdaChartProProps.drawing}。
+	 */
+	drawing: boolean;
 	/** Whether the left-hand drawing bar is showing; drives the toggle's pressed state. 左侧画线栏是否显示；决定开关的按下态。 */
 	drawingBarVisible: boolean;
+	/**
+	 * Whether the drawing manager is available at all, i.e. the feature flag. The
+	 * entry is hidden when off rather than shown disabled: the flag is a decision
+	 * about what this chart *is*, and a control that can never be pressed is a
+	 * question the reader cannot answer.
+	 *
+	 * 画线管理器是否可用，即那个功能开关。关闭时入口直接隐藏而不是显示为禁用：该开关决定这张图表
+	 * *是什么*，一个永远按不动的控件是读者回答不了的问题。
+	 */
+	drawingManager: boolean;
+	/** Whether the drawing manager's panel is open; drives the toggle's pressed state. 画线管理器的面板是否打开；决定开关的按下态。 */
+	drawingManagerOpen: boolean;
 	/** The active timezone, named on its button. 当前时区，显示在它的按钮上。 */
 	timezone: string;
 	/** Instruments to pick from; the picker is hidden when absent. 可供选择的标的；缺省时不显示选择器。 */
-	symbols?: readonly SymbolInfo[];
+	symbols?: readonly AdaChartProSymbolOption[];
 	symbol?: SymbolInfo;
 	/**
 	 * Whether the Wrapper's root — this strip included — is the document's
@@ -113,8 +134,9 @@ export interface AdaChartProToolbarProps {
 	onThemeChange: () => void;
 	onPeriodChange: (period: Period) => void;
 	onIndicatorsChange: (main: string[], sub: string[]) => void;
-	onSymbolChange?: (symbol: SymbolInfo) => void;
+	onSymbolChange?: (symbol: AdaChartProSymbolOption) => void;
 	onToggleDrawingBar: () => void;
+	onToggleDrawingManager: () => void;
 	onSettingsOpen: () => void;
 	onTimezoneOpen: () => void;
 	onScreenshot: () => void;
@@ -178,7 +200,7 @@ export function AdaChartProToolbar(props: AdaChartProToolbarProps) {
 		const q = query.trim().toLowerCase();
 		if (!q) return [...symbols];
 		return symbols.filter((item) =>
-			[item.ticker, item.shortName, item.name].some(
+			symbolOptionFields(item).some(
 				(value) => typeof value === "string" && value.toLowerCase().includes(q),
 			),
 		);
@@ -204,29 +226,61 @@ export function AdaChartProToolbar(props: AdaChartProToolbarProps) {
 			 * left edge, directly below. `aria-pressed` reports the bar's visibility so
 			 * the control is a toggle to assistive tech, not a mystery button.
 			 *
+			 * It goes when the umbrella flag is off: `drawingBarVisible` still says
+			 * `true` in that state — nobody hid the bar, the bar is simply not part of
+			 * this chart — so a pressed toggle pointing at nothing would be worse than
+			 * absent.
+			 *
 			 * 画线栏开关排在最前：它控制的那条栏就挂在左边缘、正下方。`aria-pressed` 汇报栏的
-			 * 可见性，因此对辅助技术而言这是个开关，而不是一个用途不明的按钮。 */}
-			<button
-				type="button"
-				className="adachart-pro__button adachart-pro__button--icon"
-				title={t("menu")}
-				aria-label={t("menu")}
-				aria-pressed={props.drawingBarVisible}
-				onClick={props.onToggleDrawingBar}
-			>
-				<svg
-					className="adachart-pro__menu-icon"
-					viewBox="0 0 22 22"
-					width="22"
-					height="22"
-					aria-hidden="true"
-					focusable="false"
+			 * 可见性，因此对辅助技术而言这是个开关，而不是一个用途不明的按钮。
+			 *
+			 * 总开关关闭时它会消失：那种状态下 `drawingBarVisible` 仍是 `true` —— 没有人把栏藏起来，
+			 * 只是这条栏不属于这张图表 —— 因此一个按亮着却什么都没指向的开关比没有更糟。 */}
+			{props.drawing && (
+				<button
+					type="button"
+					className="adachart-pro__button adachart-pro__button--icon"
+					title={t("menu")}
+					aria-label={t("menu")}
+					aria-pressed={props.drawingBarVisible}
+					onClick={props.onToggleDrawingBar}
 				>
-					<rect x="2" y="5" width="18" height="2" rx="1" fill="currentColor" />
-					<rect x="2" y="10" width="18" height="2" rx="1" fill="currentColor" />
-					<rect x="2" y="15" width="18" height="2" rx="1" fill="currentColor" />
-				</svg>
-			</button>
+					<svg
+						className="adachart-pro__menu-icon"
+						viewBox="0 0 22 22"
+						width="22"
+						height="22"
+						aria-hidden="true"
+						focusable="false"
+					>
+						<rect x="2" y="5" width="18" height="2" rx="1" fill="currentColor" />
+						<rect x="2" y="10" width="18" height="2" rx="1" fill="currentColor" />
+						<rect x="2" y="15" width="18" height="2" rx="1" fill="currentColor" />
+					</svg>
+				</button>
+			)}
+
+			{/* The drawing manager's entry sits next to the drawing bar's, so the two
+			 * drawing surfaces are one pair: the bar makes a shape, the panel accounts
+			 * for it. It is text rather than a glyph because it names a panel rather
+			 * than a tool, like the settings entries at the other end of the strip.
+			 *
+			 * 画线管理器的入口紧挨画线栏开关，使两个画线界面成为一对：栏负责画，面板负责清点。它是
+			 * 文字而不是图标，因为它命名的是一块面板而不是一个工具 —— 与工具栏另一端的设置入口相同。 */}
+			{props.drawingManager && (
+				<button
+					type="button"
+					className={
+						props.drawingManagerOpen
+							? "adachart-pro__button adachart-pro__button--active"
+							: "adachart-pro__button"
+					}
+					aria-pressed={props.drawingManagerOpen}
+					onClick={props.onToggleDrawingManager}
+				>
+					{t("drawings")}
+				</button>
+			)}
 
 			{props.symbols && props.symbol && (
 				<div className="adachart-pro__group">
@@ -247,7 +301,7 @@ export function AdaChartProToolbar(props: AdaChartProToolbarProps) {
 								alt=""
 							/>
 						) : null}
-						{symbolLabel(props.symbol)}
+						{symbolOptionLabel(props.symbol)}
 					</button>
 					{panel === "symbol" && (
 						<div className="adachart-pro__panel">
@@ -263,7 +317,7 @@ export function AdaChartProToolbar(props: AdaChartProToolbarProps) {
 							)}
 							{found.map((item) => (
 								<button
-									key={item.ticker}
+									key={symbolOptionKey(item)}
 									type="button"
 									className="adachart-pro__item"
 									onClick={() => {
@@ -271,8 +325,7 @@ export function AdaChartProToolbar(props: AdaChartProToolbarProps) {
 										setPanel(null);
 									}}
 								>
-									{item.ticker}
-									{typeof item.name === "string" ? ` — ${item.name}` : ""}
+									{symbolOptionListLabel(item)}
 								</button>
 							))}
 						</div>
