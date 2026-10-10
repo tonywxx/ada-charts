@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { drawingMessage } from "./adachart-pro-drawing-tools";
 import { messageFor } from "./adachart-pro-messages";
 import { AdaChartProOverlayIcon } from "./adachart-pro-overlay-icons";
+import { type AdaChartProDrawingRow } from "./drawing-inventory";
 
 /**
  * `AdaChartPro`'s drawing manager: the panel that lists what has been drawn, and
@@ -42,18 +43,6 @@ import { AdaChartProOverlayIcon } from "./adachart-pro-overlay-icons";
  * 哪条 overlay 被选中 —— 只有画布上的 `onSelected` 能发起它 —— 但点击一行无法在图上选中那个形状，
  * 所以行本身不可点。一个只点亮自己那一行、别的什么都不动的控件，正是画线栏的注释已经拒绝出厂的点击。
  */
-
-/** One drawing, as the panel shows it. 一条画线，即面板所显示的样子。 */
-export interface AdaChartProDrawingRow {
-	/** The overlay's id, which every action is addressed to. overlay 的 id，所有操作都指向它。 */
-	id: string;
-	/** The `klinecharts` overlay name, i.e. which tool drew it; drives the row's glyph. `klinecharts` 的 overlay 名称，即由哪个工具画出；决定该行的图标。 */
-	name: string;
-	/** What to show: the name the reader gave it, or the tool's own label. 要显示的文本：读者给的名字，或工具自身的文案。 */
-	label: string;
-	locked: boolean;
-	visible: boolean;
-}
 
 export interface AdaChartProDrawingManagerProps {
 	locale: string;

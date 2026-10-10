@@ -28,14 +28,16 @@ import {
 	AdaChartProTimezoneDialog,
 } from "./adachart-pro-dialogs";
 import { AdaChartProDrawingBar } from "./adachart-pro-drawing-bar";
+import { AdaChartProDrawingManager } from "./adachart-pro-drawing-manager";
 import {
-	AdaChartProDrawingManager,
 	type AdaChartProDrawingRow,
-} from "./adachart-pro-drawing-manager";
+	type ManagedOverlay,
+	buildManagedRows,
+	selectManagedOverlays,
+} from "./drawing-inventory";
 import {
 	ADACHARTPRO_DRAWING_GROUP_ID,
 	drawingGroupsFor,
-	drawingToolLabel,
 } from "./adachart-pro-drawing-tools";
 import { messageFor } from "./adachart-pro-messages";
 import {
@@ -475,9 +477,7 @@ function AdaChartPro(props: AdaChartProProps) {
 	 * 名字存在这里而不是写到 overlay 上：唯一能安放名字的字段是 `extendData`，而它属于创建那条 overlay
 	 * 的人 —— 一个会把调用方自己的数据冲掉的托管名称，比一个与本组件同生共死的名称要糟得多。
 	 */
-	const [managedOverlays, setManagedOverlays] = useState<
-		Array<Omit<AdaChartProDrawingRow, "label">>
-	>([]);
+	const [managedOverlays, setManagedOverlays] = useState<ManagedOverlay[]>([]);
 	const [overlayNames, setOverlayNames] = useState<Record<string, string>>({});
 	/** The overlay the canvas has selected. Only the canvas can start a selection — v10 has no API for it. 画布已选中的 overlay。只有画布能发起选中 —— v10 没有对应 API。 */
 	const [selectedOverlayId, setSelectedOverlayId] = useState<string | null>(null);
@@ -826,17 +826,7 @@ function AdaChartPro(props: AdaChartProProps) {
 		if (!managerEnabledRef.current) return;
 		const chart = chartRef.current;
 		if (!chart) return;
-		setManagedOverlays(
-			chart
-				.getOverlays()
-				.filter((overlay) => overlay.points.length > 0)
-				.map((overlay) => ({
-					id: overlay.id,
-					name: overlay.name,
-					locked: overlay.lock,
-					visible: overlay.visible,
-				})),
-		);
+		setManagedOverlays(selectManagedOverlays(chart.getOverlays()));
 	}, []);
 
 	// The default feed is ours to stop; a caller-supplied one is the caller's.
@@ -1136,13 +1126,7 @@ function AdaChartPro(props: AdaChartProProps) {
 	 * 渲染时再去查表，使面板拿到的就是它的全部 props。
 	 */
 	const managerRows = useMemo<readonly AdaChartProDrawingRow[]>(
-		() =>
-			managedOverlays.map((overlay) => ({
-				...overlay,
-				label:
-					overlayNames[overlay.id] ??
-					drawingToolLabel(locale, overlay.name),
-			})),
+		() => buildManagedRows(managedOverlays, overlayNames, locale),
 		[managedOverlays, overlayNames, locale],
 	);
 

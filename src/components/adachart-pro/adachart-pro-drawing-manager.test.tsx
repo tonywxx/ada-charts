@@ -4,8 +4,8 @@ import { describe, expect, it } from "vitest";
 import {
 	AdaChartProDrawingManager,
 	type AdaChartProDrawingManagerProps,
-	type AdaChartProDrawingRow,
 } from "./adachart-pro-drawing-manager";
+import { type AdaChartProDrawingRow } from "./drawing-inventory";
 
 /**
  * The manager panel's rendered shape: how many rows it prints, what each row can
