@@ -39,8 +39,9 @@
 	--adacp-border: #d1d4dc;
 	--adacp-input: #ffffff;
 	--adacp-text: #1e2329;
-	--adacp-accent: #1677ff;
-	--adacp-label: #ffffff;
+	--adacp-muted: #666666;
+	--adacp-accent: #aadb85;
+	--adacp-label: #111111;
 }
 
 .adachart-pro[data-theme="dark"] {
@@ -50,8 +51,9 @@
 	--adacp-border: #3a3a46;
 	--adacp-input: #23232c;
 	--adacp-text: #b2b5be;
-	--adacp-accent: #1677ff;
-	--adacp-label: #ffffff;
+	--adacp-muted: #a8a8a8;
+	--adacp-accent: #aadb85;
+	--adacp-label: #111111;
 }
 
 .adachart-pro__toolbar {
@@ -531,6 +533,7 @@
 
 .adachart-pro__menu-icon {
 	display: block;
+	color: var(--adacp-muted);
 }
 
 /* The instrument's logo, when it has one. `alt=""` in the markup is what keeps
@@ -793,7 +796,7 @@
  * overlay programmatically — see the component's comment.
  * 在画布上被选中，而不是在本面板里：v10 无法以编程方式选中一条 overlay —— 见组件的注释。 */
 .adachart-pro__manager-row.adachart-pro__manager-row--selected {
-	background: rgb(22 119 255 / 14%);
+	background: color-mix(in srgb, var(--adacp-accent) 14%, transparent);
 }
 
 .adachart-pro__manager-label {
@@ -864,4 +867,9 @@
 .adachart-pro__manager-action .adachart-pro__icon svg {
 	width: 15px;
 	height: 15px;
+}
+
+.adachart-pro input[type="checkbox"],
+.adachart-pro input[type="range"] {
+	accent-color: var(--adacp-accent);
 }
