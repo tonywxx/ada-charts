@@ -10,7 +10,7 @@ import type {
 	Styles,
 	SymbolInfo,
 } from "klinecharts";
-import type { Dispatch, SetStateAction } from "react";
+import type { Dispatch, ReactNode, SetStateAction } from "react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DARK_THEME, LIGHT_THEME } from "../../theme";
 import { AdaChart, type AdaChartIndicator } from "../adachart/AdaChart";
@@ -69,6 +69,8 @@ import { AdaChartProToolbar } from "./adachart-pro-toolbar";
  * （`symbol`、`period`、`dataLoader`），要么是工具栏所驱动的 Pro 外围部件。
  */
 export interface AdaChartProProps {
+	/** Additional consumer controls in the native settings dialog. */
+	settingsContent?: ReactNode;
 	/**
 	 * Data source. Defaults to an {@link OkxDataLoader} streaming live OKX
 	 * candles; supply your own to change the venue.
@@ -184,6 +186,21 @@ export interface AdaChartProProps {
 	 * 图表建立后回调命令式的 {@link AdaChartProApi}。
 	 */
 	onChartReady?: (api: AdaChartProApi) => void;
+	/** Pro-owned configuration that the raw chart cannot restore. */
+	onNativeSettingsChange?: (settings: AdaChartProNativeSettings) => void;
+}
+
+export interface AdaChartProNativeSettings {
+	reverseAxis: boolean;
+	drawingEnabled: boolean;
+	drawingBarVisible: boolean;
+	overlayMode: OverlayMode;
+	overlayMagnet: Exclude<OverlayMode, "normal">;
+	overlayLocked: boolean;
+	overlayVisible: boolean;
+	overlayNames: Record<string, string>;
+	/** Explicit caller/native overrides; inherited theme colours stay outside saved state. */
+	styleOverrides: DeepPartial<Styles>;
 }
 
 /**
@@ -193,6 +210,8 @@ export interface AdaChartProProps {
  * 命令式接口：工具栏已经在做的那些事，以同一套 v10 词汇对外开放。
  */
 export interface AdaChartProApi {
+	getNativeSettings(): AdaChartProNativeSettings;
+	setNativeSettings(settings: AdaChartProNativeSettings): void;
 	/** The raw `klinecharts` instance, for everything not surfaced here. 原始 `klinecharts` 实例，用于此处未暴露的一切。 */
 	chart(): Chart | null;
 	/**
@@ -365,6 +384,7 @@ function observedLoaderFor(
  */
 function AdaChartPro(props: AdaChartProProps) {
 	const resolved = useMemo(() => resolveAdaChartProProps(props), [props]);
+	const onNativeSettingsChange = props.onNativeSettingsChange;
 
 	// The nine values a caller can also steer through props. Each is seeded from
 	// the resolved props and then handed to `useSteered`, which is what makes a
@@ -449,6 +469,7 @@ function AdaChartPro(props: AdaChartProProps) {
 	 * `visible` 描述已经在图表上的那些 overlay。
 	 */
 	const [overlayMode, setOverlayMode] = useState<OverlayMode>("weak_magnet");
+	const [overlayMagnet, setOverlayMagnet] = useState<Exclude<OverlayMode, "normal">>("weak_magnet");
 	const [overlayLocked, setOverlayLocked] = useState(false);
 	const [overlayVisible, setOverlayVisible] = useState(true);
 	/**
@@ -540,6 +561,17 @@ function AdaChartPro(props: AdaChartProProps) {
 	 * 补丁，也就单独持有一份状态。
 	 */
 	const [reverseAxis, setReverseAxis] = useState(false);
+	const styleOverrides = useMemo(() => mergeAdaChartProStyles(
+		resolved.styles, apiStyles ?? undefined, settingsPatch ?? undefined,
+	), [resolved.styles, apiStyles, settingsPatch]);
+	const nativeSettings = useMemo<AdaChartProNativeSettings>(() => ({
+		reverseAxis, drawingEnabled, drawingBarVisible, overlayMode, overlayMagnet,
+		overlayLocked, overlayVisible, overlayNames, styleOverrides,
+	}), [reverseAxis, drawingEnabled, drawingBarVisible, overlayMode, overlayMagnet,
+		overlayLocked, overlayVisible, overlayNames, styleOverrides]);
+	useEffect(() => {
+		onNativeSettingsChange?.(structuredClone(nativeSettings));
+	}, [nativeSettings, onNativeSettingsChange]);
 
 	/** The raw instance, for the drawing API and for {@link AdaChartProApi.chart}. 原始实例，供画线 API 与 {@link AdaChartProApi.chart} 使用。 */
 	const chartRef = useRef<Chart | null>(null);
@@ -727,6 +759,7 @@ function AdaChartPro(props: AdaChartProProps) {
 	 * 本次渲染下的取值，供命令式 API 读取 —— 后者必须在图表的整个生命周期里保持同一个引用。
 	 */
 	const stateRef = useRef({
+		nativeSettings,
 		props,
 		resolved,
 		theme,
@@ -738,6 +771,7 @@ function AdaChartPro(props: AdaChartProProps) {
 	});
 	useEffect(() => {
 		stateRef.current = {
+			nativeSettings,
 			props,
 			resolved,
 			theme,
@@ -883,11 +917,9 @@ function AdaChartPro(props: AdaChartProProps) {
 		() =>
 			mergeAdaChartProStyles(
 				indicatorTooltipStyles(theme),
-				resolved.styles,
-				apiStyles ?? undefined,
-				settingsPatch ?? undefined,
+				styleOverrides,
 			),
-		[theme, resolved.styles, apiStyles, settingsPatch],
+		[theme, styleOverrides],
 	);
 
 	/**
@@ -930,6 +962,19 @@ function AdaChartPro(props: AdaChartProProps) {
 	 */
 	const api = useMemo<AdaChartProApi>(
 		() => ({
+			getNativeSettings: () => structuredClone(stateRef.current.nativeSettings),
+			setNativeSettings: (settings) => {
+				setReverseAxis(settings.reverseAxis);
+				setDrawingEnabled(settings.drawingEnabled);
+				setDrawingBarVisible(settings.drawingBarVisible);
+				setOverlayMode(settings.overlayMode);
+				setOverlayMagnet(settings.overlayMagnet);
+				setOverlayLocked(settings.overlayLocked);
+				setOverlayVisible(settings.overlayVisible);
+				setOverlayNames({ ...settings.overlayNames });
+				setApiStyles(structuredClone(settings.styleOverrides));
+				setSettingsPatch(null);
+			},
 			chart: () => chartRef.current,
 			setSymbol: setSymbolRequest,
 			getSymbol: () => stateRef.current.symbol,
@@ -967,6 +1012,8 @@ function AdaChartPro(props: AdaChartProProps) {
 			setTimezone,
 			setMainIndicators,
 			setSubIndicators,
+			setDrawingEnabled,
+			setDrawingBarVisible,
 		],
 	);
 
@@ -1522,10 +1569,12 @@ function AdaChartPro(props: AdaChartProProps) {
 						groups={drawingGroups}
 						activeTool={tool}
 						mode={overlayMode}
+						magnet={overlayMagnet}
 						locked={overlayLocked}
 						visible={overlayVisible}
 						onToolChange={setTool}
 						onModeChange={setOverlayMode}
+						onMagnetChange={setOverlayMagnet}
 						onLockChange={setOverlayLocked}
 						onVisibleChange={setOverlayVisible}
 						onRemoveAll={handleRemoveAll}
@@ -1664,6 +1713,7 @@ function AdaChartPro(props: AdaChartProProps) {
 				<AdaChartProSettingsDialog
 					locale={locale}
 					settings={settings}
+					extraControls={props.settingsContent}
 					reverseAxis={reverseAxis}
 					drawing={drawingEnabled}
 					onChange={handleSettingsChange}

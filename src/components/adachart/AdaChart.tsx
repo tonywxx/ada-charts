@@ -605,8 +605,6 @@ function AdaChart(props: AdaChartProps) {
 		if (resolved.hotkey) chart.setHotkey(resolved.hotkey);
 		chart.setScrollEnabled(resolved.scrollEnabled);
 		chart.setZoomEnabled(resolved.zoomEnabled);
-		chart.setOffsetRightDistance(resolved.offsetRightDistance);
-		if (resolved.barSpace !== undefined) chart.setBarSpace(resolved.barSpace);
 		if (resolved.maxOffsetLeftDistance !== undefined) {
 			chart.setMaxOffsetLeftDistance(resolved.maxOffsetLeftDistance);
 		}
@@ -620,6 +618,14 @@ function AdaChart(props: AdaChartProps) {
 			chart.setRightMinVisibleBarCount(resolved.rightMinVisibleBarCount);
 		}
 	}, [resolved, engine]);
+
+	// Preserve user pan/zoom when unrelated props or stream state rerender the chart.
+	useEffect(() => {
+		engine()?.setOffsetRightDistance(resolved.offsetRightDistance);
+	}, [resolved.offsetRightDistance, engine]);
+	useEffect(() => {
+		if (resolved.barSpace !== undefined) engine()?.setBarSpace(resolved.barSpace);
+	}, [resolved.barSpace, engine]);
 
 	// Symbol identity changes re-seed through the loader's init path.
 	// 标的身份变化会经由 loader 的 init 路径重新灌入。

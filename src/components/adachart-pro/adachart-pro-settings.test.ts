@@ -213,6 +213,10 @@ describe("indicatorTooltipStyles", () => {
 		// Pro 的四个图标收敛为三个：v10 会把它拿到的每个 feature 都画出来，`visible` 与
 		// `invisible` 并排就会是两个相反的字形。
 		const patch = indicatorTooltipStyles("light");
+		for (const feature of patch.indicator?.tooltip?.features ?? []) {
+			expect(feature).toMatchObject({ type: "path", size: 14, marginLeft: 6, content: { style: "stroke", lineWidth: 1.2 } });
+		}
+
 		expect(patch.indicator?.tooltip?.features?.map((feature) => feature?.id)).toEqual([
 			"visible",
 			"setting",

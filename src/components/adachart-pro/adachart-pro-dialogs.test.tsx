@@ -50,6 +50,16 @@ describe("AdaChartProSettingsDialog", () => {
 		}),
 	);
 
+	it("renders consumer controls inside the native settings dialog", () => {
+		const html = renderToStaticMarkup(createElement(AdaChartProSettingsDialog, {
+			locale: "en-US", settings: ADACHARTPRO_DEFAULT_SETTINGS, reverseAxis: false,
+			drawing: true, onChange: noop, onReverseAxisChange: noop, onDrawingChange: noop, onClose: noop,
+			extraControls: createElement("label", null, "Candle tooltip", createElement("select", { defaultValue: "follow" }, createElement("option", { value: "follow" }, "Follow crosshair"))),
+		}));
+		expect(html).toContain("Candle tooltip");
+		expect(html).toContain('value="follow" selected=""');
+	});
+
 	it("is a modal of the width Pro states", () => {
 		expect(markup).toContain('role="dialog"');
 		expect(markup).toContain('aria-modal="true"');

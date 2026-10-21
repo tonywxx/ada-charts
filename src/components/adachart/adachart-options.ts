@@ -129,6 +129,7 @@ interface VolumeOverlayDatum {
  */
 const volumeOverlay: IndicatorTemplate<VolumeOverlayDatum> = {
 	name: VOLUME_OVERLAY_INDICATOR,
+	shortName: "VOL-MAIN",
 	series: "volume",
 	minValue: 0,
 	shouldFormatBigNumber: true,

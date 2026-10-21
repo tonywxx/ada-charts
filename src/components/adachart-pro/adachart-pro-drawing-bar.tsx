@@ -63,10 +63,12 @@ export interface AdaChartProDrawingBarProps {
 	activeTool: string | null;
 	/** Snapping behaviour for the next overlay. 下一条 overlay 的吸附行为。 */
 	mode: OverlayMode;
+	magnet?: Exclude<OverlayMode, "normal">;
 	locked: boolean;
 	visible: boolean;
 	onToolChange: (tool: string | null) => void;
 	onModeChange: (mode: OverlayMode) => void;
+	onMagnetChange?: (mode: Exclude<OverlayMode, "normal">) => void;
 	onLockChange: (locked: boolean) => void;
 	onVisibleChange: (visible: boolean) => void;
 	onRemoveAll: () => void;
@@ -95,7 +97,8 @@ export function AdaChartProDrawingBar(props: AdaChartProDrawingBarProps) {
 	 * normal 与*这一档*之间切换，而从子列表里选择会同时改动两者。这里照搬这个区分，因为
 	 * 一旦把两者合成一个值，图标的全部含义 —— 离开 normal 时回到哪一档 —— 就丢了。
 	 */
-	const [magnet, setMagnet] = useState<OverlayMode>("weak_magnet");
+	const [localMagnet, setMagnet] = useState<Exclude<OverlayMode, "normal">>("weak_magnet");
+	const magnet = props.magnet ?? localMagnet;
 
 	// Dismiss the open sub-list on an outside click, so it cannot be stranded
 	// over the chart. Same rule as the toolbar's dropdowns.
@@ -220,6 +223,7 @@ export function AdaChartProDrawingBar(props: AdaChartProDrawingBarProps) {
 									}
 									onClick={() => {
 										setMagnet(name);
+										props.onMagnetChange?.(name);
 										props.onModeChange(name);
 										setOpen(null);
 									}}

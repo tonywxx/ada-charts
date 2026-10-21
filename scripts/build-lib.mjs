@@ -53,7 +53,7 @@ const ADA_PRO_ENTRY = {
 	"adachart-pro": "src/components/adachart-pro/AdaChartPro.tsx",
 };
 
-const isReact = (id) => id === "react" || id === "react-dom" || /^react(-dom)\//.test(id);
+const isReact = (id) => id === "react" || id === "react-dom" || /^react(-dom)?\//.test(id);
 const isEngine = (id) => id === "lightweight-charts" || id === "klinecharts";
 
 /**

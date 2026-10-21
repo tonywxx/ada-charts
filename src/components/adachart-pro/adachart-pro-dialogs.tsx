@@ -136,6 +136,7 @@ function Field(props: { id: string; label: string; children: ReactNode }) {
 }
 
 export interface AdaChartProSettingsDialogProps {
+	extraControls?: ReactNode;
 	locale: string;
 	/** Seeded from the live chart styles when the dialog opens. 打开对话框时由活的图表样式播种。 */
 	settings: AdaChartProSettings;
@@ -273,6 +274,7 @@ export function AdaChartProSettingsDialog(props: AdaChartProSettingsDialogProps)
 						/>
 					</Field>
 				))}
+				{props.extraControls}
 			</div>
 		</Modal>
 	);

@@ -175,46 +175,33 @@ export type AdaChartProIndicatorFeatureId =
  * both would put two opposite glyphs side by side. One toggle, whose meaning is
  * read from the indicator itself, replaces the pair.
  *
- * Glyphs are `icon_font` features drawn with a system font rather than Pro's
- * bundled `icomoon` face, which this project does not ship.
+ * Vector paths keep all three actions equally sized without relying on system fonts.
  *
  * Pro 画四个图标（`visible` **与** `invisible`，外加设置与关闭），并依赖它的 v9 引擎按指标的
  * 当前状态在前两个里只显示一个。v10 会把它拿到的每个 feature 都画出来，两个都声明就会并排出现
  * 两个相反的字形。用一个开关取代那一对，其含义从指标自身读出。
  *
- * 字形是以系统字体绘制的 `icon_font` feature，而不是 Pro 自带、本项目并未随附的 `icomoon` 字体。
+ * 矢量路径让三个操作保持相同尺寸，不依赖系统字体。
  */
 export function indicatorTooltipStyles(
 	theme: "light" | "dark",
 ): DeepPartial<Styles> {
 	const color = theme === "dark" ? "#929AA5" : "#76808F";
 	const common = {
-		position: "middle" as const,
-		type: "icon_font" as const,
-		size: 14,
-		color,
-		activeColor: color,
-		backgroundColor: "transparent",
-		activeBackgroundColor: "rgba(22, 119, 255, 0.15)",
-		marginTop: 7,
-		marginBottom: 0,
-		paddingLeft: 0,
-		paddingTop: 0,
-		paddingRight: 0,
-		paddingBottom: 0,
-		content: { family: "Helvetica Neue, Arial, sans-serif" },
+		position: "middle" as const, type: "path" as const, size: 14,
+		color, activeColor: color,
+		backgroundColor: "transparent", activeBackgroundColor: "rgba(22, 119, 255, 0.15)",
+		marginLeft: 6, marginRight: 0, marginTop: 7, marginBottom: 0,
+		paddingLeft: 0, paddingTop: 0, paddingRight: 0, paddingBottom: 0,
 	};
-	return {
-		indicator: {
-			tooltip: {
-				features: [
-					{ ...common, id: "visible", marginLeft: 8, content: { ...common.content, code: "◉" } },
-					{ ...common, id: "setting", marginLeft: 6, content: { ...common.content, code: "⚙" } },
-					{ ...common, id: "close", marginLeft: 6, content: { ...common.content, code: "✕" } },
-				],
-			},
-		},
-	};
+	const paths = [
+		["visible", "M1 7C3.8 1.7 10.2 1.7 13 7C10.2 12.3 3.8 12.3 1 7ZM9 7C9 9.7 5 9.7 5 7C5 4.3 9 4.3 9 7Z"],
+		["setting", "M5.5 1L8.5 1L9 3L10.5 3L12 4.5L11 6L11 8L12 9.5L10.5 11L9 11L8.5 13L5.5 13L5 11L3.5 11L2 9.5L3 8L3 6L2 4.5L3.5 3L5 3ZM9 7C9 9.7 5 9.7 5 7C5 4.3 9 4.3 9 7Z"],
+		["close", "M2.5 2.5L11.5 11.5M11.5 2.5L2.5 11.5"],
+	] as const;
+	return { indicator: { tooltip: { features: paths.map(([id, path]) => ({
+		...common, id, content: { path, style: "stroke" as const, lineWidth: 1.2 },
+	})) } } };
 }
 
 // -------------------------------------------------------------------- timezone

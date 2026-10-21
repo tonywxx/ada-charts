@@ -368,7 +368,7 @@ export function AdaChartProToolbar(props: AdaChartProToolbarProps) {
 									checked={props.mainIndicators.includes(name)}
 									onChange={() => toggleIndicator(name, true)}
 								/>{" "}
-								{name}
+								{name === "vol-main" ? "VOL-MAIN" : name}
 							</label>
 						))}
 						<div className="adachart-pro__section">{t("sub")}</div>
