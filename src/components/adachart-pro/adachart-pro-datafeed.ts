@@ -323,13 +323,13 @@ function fetchPageFor(
  * The snapshot is one window around "now"; a page asks for bars on one side of
  * an arbitrary bar. Answering a failed page with the snapshot would put bars on
  * the chart that the reader did not ask for and that they already have, so a
- * failed page answers "nothing more" instead. `@klinecharts/pro` calls the same
+ * failed page answers "nothing more" instead. The v9 Pro layer calls the same
  * choice `loadMore` failing softly.
  *
  * 一页历史，**不**做快照兜底 —— 这一点与 {@link fetchBar} 刻意不同。
  *
  * 快照是「当下」附近的一个窗口，而一页要的是某一根 K 线某一侧的 K 线。用快照回答失败的一页，
- * 会把读者没要、而且已经有了的 K 线放到图上，因此失败的一页回答「没有了」。`@klinecharts/pro`
+ * 会把读者没要、而且已经有了的 K 线放到图上，因此失败的一页回答「没有了」。v9 Pro 层
  * 对同样的选择称之为 `loadMore` 的软失败。
  */
 async function fetchPage(

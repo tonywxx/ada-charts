@@ -19,8 +19,8 @@ A chart/visualization component library for displaying data in downstream projec
 
 `AdaChart` and `AdaChartPro` are the only components in this repository. The
 `lightweight-charts`-based wrappers (`TChart`, `TChartPro`) now live in the separate
-[`tcharts`](https://github.com/tonywxx/tcharts) repository, and the `@klinecharts/pro`
-wrapper (`KChartPro`) has been removed — see
+[`tcharts`](https://github.com/tonywxx/tcharts) repository, and the v9-based
+`KChartPro` wrapper has been removed — see
 [ADR-0003](docs/adr/0003-adachart-pro-is-the-v10-native-pro-layer.md).
 
 Props are documented bilingually (English + 中文) in JSDoc, which Storybook's Autodocs

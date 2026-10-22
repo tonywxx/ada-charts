@@ -6,14 +6,14 @@ import snapshot from "./__data__/btc-usdt.json";
  *
  * Three modules used to parse the same response three different ways, and the
  * copies had already drifted: two dropped non-finite candles and one did not, so
- * a bad row could reach `KChartPro` and nowhere else. The row layout and the
+ * a bad row could reach one Wrapper and nowhere else. The row layout and the
  * ordering rule are facts about the *feed*, not about the engine, so they now
  * live here and each Wrapper maps the result onto whatever its engine wants.
  *
  * 所有知道 OKX 如何表达市场数据的代码集中一处，且不含任何图表引擎。
  *
  * 同一段响应此前被三个模块各解析一遍，而且副本已经漂移：两处会丢弃非有限值的 K 线、
- * 一处不会，于是一根坏数据能到达 `KChartPro` 却到不了别处。行格式与排序规则是*数据源*
+ * 一处不会，于是一根坏数据能进得了某一个 Wrapper 却进不了别处。行格式与排序规则是*数据源*
  * 的事实、不是引擎的事实，所以现在放这里，各 Wrapper 只把结果映射成自己引擎要的形状。
  */
 

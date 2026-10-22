@@ -1,5 +1,10 @@
 # The volume overlay is a study of its own
 
+> **Status — the repo split.** The decision is unchanged and still governs
+> `AdaChart` and `AdaChartPro`. The components named as collateral below have
+> moved: the frozen `TChartPro` now lives in the `tcharts` repo, and
+> `KChartPro` was removed from this repo.
+
 `CONTEXT.md` gives **Indicator** as "a derived series computed from candles", and **Pane** as "a horizontal region of the chart with its own axis". The default view `AdaChart` opens on — a moving average over the candles with volume in the pane below — took the first of those for granted and ignored the second, and the mismatch is what this ADR records. The new default is **`EMA` plus `vol-main` over the candles, one `MACD` pane below**.
 
 The engine ships a volume study, `VOL`, and this library does not touch it. It gains a second study, registered under a name of its own, `vol-main`, which draws one bar per candle and nothing else. The two are different studies, not two settings of one, and `VOL` — its three moving averages included — keeps the pane it has always had.
@@ -8,7 +13,7 @@ The engine ships a volume study, `VOL`, and this library does not touch it. It g
 
 `VOL` is `calcParams: [5, 10, 20]` with four figures: three line figures and one bar figure. The averages are not a decoration that could be switched off; they are the study's shape, and the reader who wants the bars alone — the TradingView-style overlay, one bar per candle with no line through it — cannot have them from `VOL` at any setting.
 
-Reusing the name was the cheaper-looking option and it is the wrong one, for a reason specific to `klinecharts`: the indicator registry is a **global, per-page map**, and `registerIndicator` writes into it by assignment. A second registration under an existing name silently replaces the first, for every chart on the page. That is one page's worth of collateral — the frozen `TChartPro`, every `KChartPro` story, and any caller who asked for `VOL` — in exchange for not typing a new name. There is no way to wrap the engine's own template instead: `getIndicatorClass` is not exported, so the built-in `VOL` cannot be cloned and trimmed. A new name is not a compromise here; it is the only way to add without subtracting.
+Reusing the name was the cheaper-looking option and it is the wrong one, for a reason specific to `klinecharts`: the indicator registry is a **global, per-page map**, and `registerIndicator` writes into it by assignment. A second registration under an existing name silently replaces the first, for every chart on the page. That is one page's worth of collateral — the frozen `TChartPro` (in the `tcharts` repo now), every `KChartPro` story (removed from this repo now), and any caller who asked for `VOL` — in exchange for not typing a new name. There is no way to wrap the engine's own template instead: `getIndicatorClass` is not exported, so the built-in `VOL` cannot be cloned and trimmed. A new name is not a compromise here; it is the only way to add without subtracting.
 
 ## Why the candles' pane, and why an axis of its own
 

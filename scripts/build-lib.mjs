@@ -1,5 +1,4 @@
 import react from "@vitejs/plugin-react";
-import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "vite";
@@ -7,62 +6,28 @@ import { build } from "vite";
 /**
  * Library pass for the AdaChart family.
  *
- * `AdaChart` and `AdaChartPro` externalise their engines: a consumer resolves
+ * `AdaChart` and `AdaChartPro` externalise their engine: a consumer resolves
  * `klinecharts` itself, and `@klinecharts/extension` needs the same v10 instance
- * as `AdaChart`.
+ * as `AdaChart`. There is exactly one engine in the published bundle.
  *
- * `AdaChartPro` also pulls in `@klinecharts/pro`, which is compiled against the
- * KLineChart v9 runtime. The `klinechartsProUsesV9()` plugin below redirects
- * **only** Pro's own `klinecharts` import to the v9 copy — the same redirect the
- * dev server and Storybook use — so the v9 runtime is bundled into
- * `adachart-pro.js` while `AdaChart`'s bare `klinecharts` import stays external
- * (resolved to the consumer's v10). Without the plugin the bare import would
- * escape to the consumer's v10 and call v9-only methods (`init`, `utils`,
- * `ActionType`) on a v10 chart — see ADR-0002.
+ * The klinecharts v9 runtime is not here at all. The Pro layer of the v9
+ * generation — the one this repo's Pro layer was ported from — is a design
+ * reference, not a runtime import: `AdaChartPro` reimplements that layer on top
+ * of v10, so nothing pulls in a second copy of klinecharts and there is no v9
+ * engine to keep apart. See ADR-0002 for what that arrangement used to cost.
  *
  * 该文件只构建 AdaChart 系列。
  *
  * `AdaChart` 与 `AdaChartPro` 把引擎设为 external：由下游自己解析 `klinecharts`，
- * 而 `@klinecharts/extension` 必须与 `AdaChart` 用同一个 v10 实例。
+ * 而 `@klinecharts/extension` 必须与 `AdaChart` 用同一个 v10 实例。发布的产物里
+ * 只有这一个引擎。
  *
- * `AdaChartPro` 还引入 `@klinecharts/pro`，它按 KLineChart v9 运行时编译。下面的
- * `klinechartsProUsesV9()` 插件只把 Pro 自己那份 `klinecharts` 引用重定向到 v9 副本
- * —— 与 dev、Storybook 用的是同一个重定向 —— 于是 v9 运行时被打进 `adachart-pro.js`，
- * 而 `AdaChart` 那份裸 `klinecharts` 仍保持 external（由下游解析成 v10）。没有这个插件，
- * 裸引用会落到下游的 v10 上，拿 v10 图表去调只有 v9 才有的方法（见 ADR-0002）。
+ * klinecharts v9 运行时完全不在这里。v9 那一代的 Pro 层（本仓库 Pro 层的移植来源）
+ * 是设计参照，不是运行时引入：`AdaChartPro` 在 v10 之上重新实现了那一层，因此这里不会
+ * 引入第二份 klinecharts，也没有需要分开的 v9 引擎。ADR-0002 记录了这种安排过去的代价。
  */
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-
-/**
- * Redirect only `@klinecharts/pro`'s own `klinecharts` import to the v9 ESM
- * copy. Mirrors the plugin in `vite.config.ts`; see ADR-0002 for why the v9
- * **ESM file** (not the package) must be named, and why the redirect is scoped
- * to Pro's importer rather than applied globally.
- * 只把 `@klinecharts/pro` 自身的 `klinecharts` 引用重定向到 v9 ESM 副本。
- * 与 `vite.config.ts` 里的插件一致；为何必须指 v9 的 ESM 文件、为何只限定 Pro 的
- * importer，见 ADR-0002。
- */
-function klinechartsProUsesV9() {
-	const v9Id = createRequire(path.join(root, "noop.cjs")).resolve(
-		"klinecharts-v9/dist/index.esm.js",
-	);
-	return {
-		name: "klinecharts-pro-uses-v9",
-		enforce: "pre",
-		resolveId(source, importer) {
-			if (
-				source === "klinecharts" &&
-				importer &&
-				/@klinecharts[\\/]pro[\\/]/.test(importer)
-			) {
-				return v9Id;
-			}
-			return null;
-		},
-	};
-}
-
 
 const ENTRIES = {
 	"adachart": "src/components/adachart/AdaChart.tsx",
@@ -83,7 +48,7 @@ async function libPass(entry, { external, first, cssFileName }) {
 	await build({
 		root,
 		logLevel: "info",
-		plugins: [klinechartsProUsesV9(), react()],
+		plugins: [react()],
 		build: {
 			// Only the first pass clears `dist`; the others add to it.
 			// 只有第一遍清空 `dist`；其余各遍在其上追加。

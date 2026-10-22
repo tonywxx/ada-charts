@@ -11,7 +11,7 @@ import { AdaChartProOverlayIcon } from "./adachart-pro-overlay-icons";
  *
  * It is the only way to arm a drawing tool — the top toolbar's drawing dropdown
  * was removed when this arrived, so a tool has one home rather than two. The
- * shape is `@klinecharts/pro`'s: a glyph per group, each opening its sub-list to
+ * shape is the v9 Pro layer's: a glyph per group, each opening its sub-list to
  * the right; then the overlay mode, the lock and visibility toggles, and a
  * "clear all" that drops every overlay the bar made.
  *
@@ -31,7 +31,7 @@ import { AdaChartProOverlayIcon } from "./adachart-pro-overlay-icons";
  * `AdaChartPro` 的画线栏：图表左侧的竖向条。
  *
  * 它是选中画线工具的唯一入口 —— 它到来时顶部工具栏的画线下拉被移除了，工具因此只有一个家
- * 而不是两个。形状来自 `@klinecharts/pro`：五个组图标，各自向右展开子列表；随后是 overlay
+ * 而不是两个。形状来自 v9 Pro 层：五个组图标，各自向右展开子列表；随后是 overlay
  * 模式、锁定与显示开关，以及清空画线栏所画全部 overlay 的按钮。
  *
  * 点击组图标会展开该组列表，其箭头同样如此 —— 箭头是同一动作的另一个更大、始终可辨的点击
@@ -87,13 +87,13 @@ export function AdaChartProDrawingBar(props: AdaChartProDrawingBarProps) {
 	const rootRef = useRef<HTMLDivElement | null>(null);
 
 	/**
-	 * The magnet the mode glyph stands for. `@klinecharts/pro` keeps this apart
+	 * The magnet the mode glyph stands for. The v9 Pro layer keeps this apart
 	 * from the active mode: clicking the glyph toggles normal ↔ *this* magnet,
 	 * and picking from the sub-list moves both. It is mirrored here because the
 	 * glyph's whole meaning — which magnet comes back when you leave `normal` —
 	 * is lost if the two are collapsed into one value.
 	 *
-	 * 模式图标所代表的磁吸档位。`@klinecharts/pro` 把它与当前模式分开保存：点击图标在
+	 * 模式图标所代表的磁吸档位。v9 Pro 层把它与当前模式分开保存：点击图标在
 	 * normal 与*这一档*之间切换，而从子列表里选择会同时改动两者。这里照搬这个区分，因为
 	 * 一旦把两者合成一个值，图标的全部含义 —— 离开 normal 时回到哪一档 —— 就丢了。
 	 */

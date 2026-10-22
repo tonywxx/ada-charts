@@ -195,11 +195,11 @@ const DARK_STYLES: DeepPartial<Styles> = {
 };
 
 /**
- * The Theme preset for a mode, shared with `KChartPro` so both klinecharts-based
- * Wrappers fan the same tokens out through the same table.
+ * The Theme preset for a mode, shared so that every klinecharts-based Wrapper
+ * fans the same tokens out through the same table.
  *
- * 某个模式对应的 Theme 预设；与 `KChartPro` 共用，使两个基于 klinecharts 的 Wrapper
- * 把同一批 token 扇出到同一张表。
+ * 某个模式对应的 Theme 预设；各个基于 klinecharts 的 Wrapper 共用它，把同一批 token
+ * 扇出到同一张表。
  */
 export function themeStyles(mode: "light" | "dark"): DeepPartial<Styles> {
 	return mode === "dark" ? DARK_STYLES : LIGHT_STYLES;

@@ -49,12 +49,13 @@ import {
  * Every story draws from **live** BTC-USDT candles, and keeps drawing: the loader
  * requests the latest 300 bars from the OKX public market API when a page is
  * opened, and every `candle` push after that is folded into the newest bar, so what
- * is on screen is the real, current market — the same data source `TChart` uses,
- * just shaped for `klinecharts` (millisecond timestamps).
+ * is on screen is the real, current market — the same feed the `tcharts` repo's
+ * `TChart` reads, just shaped for `klinecharts` (millisecond timestamps).
  *
  * 所有 story 都使用**实时**的 BTC-USDT K 线，并且持续更新：loader 在页面打开时从 OKX 公共行情
  * 接口请求最新的 300 根 K 线，此后每一次 `candle` 推送都并入最新一根，因此屏幕上就是真实、当前的
- * 行情 —— 与 `TChart` 同源，只是整形为 `klinecharts` 所需的形式（毫秒时间戳）。
+ * 行情 —— 与 `tcharts` 仓库里 `TChart` 读的是同一份行情源，只是整形为 `klinecharts`
+ * 所需的形式（毫秒时间戳）。
  */
 
 /** Select-style controls that the type inference alone cannot render. 类型推断无法自动渲染的下拉控件。 */

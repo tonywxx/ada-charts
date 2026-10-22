@@ -1,5 +1,11 @@
 # Bar aggregation belongs to the source
 
+> **Status — the repo split.** The decision is unchanged and still governs
+> `AdaChart` and `AdaChartPro`. The other engine named below has moved: the
+> `lightweight-charts` wrapper (`TChart`) now lives in the `tcharts` repo, so
+> this repo no longer ships it. The hub and the multi-period grid described
+> here are this repo's.
+
 `CONTEXT.md` defines **Streaming data** as a set fetched once that continues as revisions to the newest candle, and adds the sentence this ADR is the record behind: "The chart never aggregates raw trades into candles itself; the aggregation is the source's, so both sides agree on where a period ends."
 
 The live path starts at `src/okx-stream.ts`, a hub that sits deliberately **below** the engine boundary. It is not a `DataLoader`: `klinecharts` and `lightweight-charts` disagree about what a live series even is, so what they share has to be thinner than either. What is shared is one socket per page, one subscription per `instId:bar` refcounted so eight windows watching eight bar sizes hold one connection, one ping to survive a quiet market, and reconnection with backoff on everybody's behalf. `AdaChartPro`'s datafeed and the multi-period grid both reach the venue through it.

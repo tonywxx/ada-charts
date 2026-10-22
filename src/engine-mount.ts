@@ -31,11 +31,11 @@ export interface EngineMountOptions<T> {
 	destroy: (engine: T) => void;
 	/**
 	 * Called whenever the container changes size. Omit it when the engine resizes
-	 * itself: `TChart` leaves this to lightweight-charts' `autoSize`, and giving it
-	 * an observer as well would start a fight over the canvas dimensions.
+	 * itself: `lightweight-charts` does this through its own `autoSize`, and giving
+	 * it an observer as well would start a fight over the canvas dimensions.
 	 *
-	 * 容器尺寸变化时调用。引擎能自适时的就不要传：`TChart` 交给 lightweight-charts 的
-	 * `autoSize`，这里再多一层 observer 只会两边抢 canvas 尺寸。
+	 * 容器尺寸变化时调用。引擎能自适时的就不要传：`lightweight-charts` 通过自己的
+	 * `autoSize` 做这件事，这里再多一层 observer 只会两边抢 canvas 尺寸。
 	 */
 	resize?: (engine: T) => void;
 }

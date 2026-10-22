@@ -581,11 +581,11 @@ function AdaChartPro(props: AdaChartProProps) {
 	/**
 	 * The wrapper's own root: what fullscreen is requested on, so the whole
 	 * terminal is maximised rather than the chart alone, and what the surface
-	 * colour is read from when capturing. `@klinecharts/pro` requests fullscreen
+	 * colour is read from when capturing. The v9 Pro layer requests fullscreen
 	 * on its widget root for the same reason.
 	 *
 	 * 外层自己的根元素：全屏请求作用于它，因此被最大化的是整个终端而不是只有图表；截图时
-	 * 表面色也从它读取。`@klinecharts/pro` 出于同样的原因把全屏请求作用在它的 widget 根元素上。
+	 * 表面色也从它读取。v9 Pro 层出于同样的原因把全屏请求作用在它的 widget 根元素上。
 	 */
 	const rootRef = useRef<HTMLDivElement | null>(null);
 	/**
@@ -944,11 +944,11 @@ function AdaChartPro(props: AdaChartProProps) {
 	);
 
 	/**
-	 * The quote currency shown on the price axis, upper-cased as `@klinecharts/pro`
+	 * The quote currency shown on the price axis, upper-cased as the v9 Pro layer does
 	 * shows it. Absent when the symbol names none — see
 	 * {@link resolveAdaChartProProps}, which derives one from a `BASE-QUOTE` ticker.
 	 *
-	 * 价格轴上显示的计价币，按 `@klinecharts/pro` 的写法转为大写。标的没有点明时为空 ——
+	 * 价格轴上显示的计价币，按 v9 Pro 层的写法转为大写。标的没有点明时为空 ——
 	 * 见 {@link resolveAdaChartProProps}，它会从 `BASE-QUOTE` 形式的代码里推导一个。
 	 */
 	const priceUnit =
@@ -1036,7 +1036,7 @@ function AdaChartPro(props: AdaChartProProps) {
 	 *
 	 * The overlay is tagged with `ADACHARTPRO_DRAWING_GROUP_ID`, which is what
 	 * makes "clear all" mean "everything the bar drew" rather than "everything on
-	 * the chart" — `@klinecharts/pro` leaves this tag off and so cannot tell the
+	 * the chart" — The v9 Pro layer leaves this tag off and so cannot tell the
 	 * two apart.
 	 *
 	 * `mode` and `locked` are handed over at creation so the bar's state reaches
@@ -1051,7 +1051,7 @@ function AdaChartPro(props: AdaChartProProps) {
 	 * 交互状态机，`onDrawEnd` 则是最后一枚锚点落下的信号。
 	 *
 	 * 画线带着 `ADACHARTPRO_DRAWING_GROUP_ID` 这个标记，正是它让「清空全部」意指「画线栏画的
-	 * 全部」而非「图表上的全部」—— `@klinecharts/pro` 没有打这个标记，因此区分不了两者。
+	 * 全部」而非「图表上的全部」—— v9 Pro 层没有打这个标记，因此区分不了两者。
 	 *
 	 * `mode` 与 `locked` 在创建时就交给引擎，使画线栏的状态同样作用于*下一条* overlay 而不只是
 	 * 已有的那些：`overrideOverlay` 只遍历已经存在的 overlay，不这样做的话磁吸与锁定会悄悄
@@ -1124,10 +1124,10 @@ function AdaChartPro(props: AdaChartProProps) {
 	 * The bar's three toggles are layer state: each lands on every overlay the
 	 * chart holds, the one being drawn included, which is why a magnet flipped
 	 * mid-drawing reaches the drawing itself. Unfiltered on purpose, matching
-	 * `@klinecharts/pro`.
+	 * the v9 Pro layer.
 	 *
 	 * 画线栏的三个开关是层状态：每个都作用于图表持有的每一条 overlay，正在画的那条也在内 ——
-	 * 因此在绘制途中切换磁吸会作用到那条正在画的线。刻意不加过滤条件，与 `@klinecharts/pro`
+	 * 因此在绘制途中切换磁吸会作用到那条正在画的线。刻意不加过滤条件，与 v9 Pro 层
 	 * 一致。
 	 */
 	useEffect(() => {
@@ -1245,11 +1245,11 @@ function AdaChartPro(props: AdaChartProProps) {
 
 	/**
 	 * `removeOverlay` answers to a filter rather than to an id, so removing is
-	 * scoped by the id — the same escape `@klinecharts/pro` uses to keep "clear
+	 * scoped by the id — the same escape the v9 Pro layer uses to keep "clear
 	 * all" from meaning "clear everything". The id-filter still goes through the
 	 * chart, because that is where "does it exist" is answered.
 	 *
-	 * `removeOverlay` 只认过滤条件而不认某个 id，因此删除以 id 限定范围 —— 与 `@klinecharts/pro`
+	 * `removeOverlay` 只认过滤条件而不认某个 id，因此删除以 id 限定范围 —— 与 v9 Pro 层
 	 * 让「清空全部」不至于变成「清空一切」所用的同一种脱身法。id 过滤仍经图表走，因为「它是否存在」
 	 * 只有那里有答案。
 	 */
@@ -1304,13 +1304,13 @@ function AdaChartPro(props: AdaChartProProps) {
 	/**
 	 * The reverse-coordinate switch, applied to every y-axis.
 	 *
-	 * `@klinecharts/pro` expressed this as the style `yAxis.reverse`, and a v9 style
+	 * The v9 Pro layer expressed this as the style `yAxis.reverse`, and a v9 style
 	 * was global — so reversing every axis is the faithful port, not a shortcut.
 	 * v10 has no such style, hence the override.
 	 *
 	 * 反转坐标开关，作用于每一条 y 轴。
 	 *
-	 * `@klinecharts/pro` 把它表达为样式 `yAxis.reverse`，而 v9 的样式是全局的 —— 因此反转每一条轴
+	 * v9 Pro 层把它表达为样式 `yAxis.reverse`，而 v9 的样式是全局的 —— 因此反转每一条轴
 	 * 是忠实的移植而非偷懒。v10 没有这个样式，故改用覆盖。
 	 */
 	useEffect(() => {
@@ -1321,14 +1321,14 @@ function AdaChartPro(props: AdaChartProProps) {
 
 	/**
 	 * The price unit badge, placed in the price pane's y-axis widget exactly where
-	 * `@klinecharts/pro` puts it.
+	 * The v9 Pro layer puts it.
 	 *
 	 * The engine's own DOM is the only host that lines up with the axis: the badge
 	 * has to sit above the axis column, and only the axis's own container knows
 	 * which column that is. The effect owns the element and removes it on cleanup,
 	 * so a symbol without a quote currency leaves nothing behind.
 	 *
-	 * 价格单位徽标，放在价格面板 y 轴部件里 —— 正是 `@klinecharts/pro` 放它的位置。
+	 * 价格单位徽标，放在价格面板 y 轴部件里 —— 正是 v9 Pro 层放它的位置。
 	 *
 	 * 引擎自己的 DOM 是唯一能与坐标轴对齐的宿主：徽标必须坐在坐标轴那一列之上，而只有坐标轴自己的
 	 * 容器知道那一列在哪。该 effect 拥有这个元素并在清理时移除它，因此没有计价币的标的不会留下残留。
@@ -1360,12 +1360,12 @@ function AdaChartPro(props: AdaChartProProps) {
 	}, []);
 
 	/**
-	 * Appearance changes land live, as they do in `@klinecharts/pro` — the dialog
+	 * Appearance changes land live, as they do in the v9 Pro layer — the dialog
 	 * exists to be looked at while the chart moves. The whole model is written as
 	 * one patch rather than the one changed row, which is what keeps the untouched
 	 * rows at the values the dialog was seeded with.
 	 *
-	 * 外观改动实时生效，与 `@klinecharts/pro` 一致 —— 这个对话框存在的意义就是一边看图表一边改。
+	 * 外观改动实时生效，与 v9 Pro 层一致 —— 这个对话框存在的意义就是一边看图表一边改。
 	 * 整个模型作为一个补丁写入而非只写被改的那行，这正是让没被碰过的行保持播种值的原因。
 	 */
 	const handleSettingsChange = useCallback((next: AdaChartProSettings) => {
@@ -1376,7 +1376,7 @@ function AdaChartPro(props: AdaChartProProps) {
 	/**
 	 * The three legend icons on an indicator's tooltip.
 	 *
-	 * This is where the Pro layer's deviation from `@klinecharts/pro` is widest, so
+	 * This is where the Pro layer's deviation from the v9 Pro layer is widest, so
 	 * it is spelled out:
 	 *
 	 * - *visible* toggles the indicator on the instance with `overrideIndicator`.
@@ -1394,7 +1394,7 @@ function AdaChartPro(props: AdaChartProProps) {
 	 *
 	 * 指标浮层上的三个图例图标。
 	 *
-	 * 这是 Pro 层与本 `@klinecharts/pro` 偏离最大之处，因此写明：
+	 * 这是 Pro 层与 v9 Pro 层偏离最大之处，因此写明：
 	 *
 	 * - *可见* 用 `overrideIndicator` 在实例上开关该指标。它刻意**不**动工具栏的复选框。那些
 	 *   复选框的含义是「要创建哪些指标」，改动其一会让全部指标从头重建 —— 那恰好会丢掉这个图标
@@ -1500,12 +1500,12 @@ function AdaChartPro(props: AdaChartProProps) {
 	}, []);
 
 	/**
-	 * Captures the chart with its overlays, as `@klinecharts/pro` does. The canvas
+	 * Captures the chart with its overlays, as the v9 Pro layer does. The canvas
 	 * is transparent, so a capture needs the same surface colour the CSS paints
 	 * behind it — read from the one place that defines it rather than spelling the
 	 * hex out a second time.
 	 *
-	 * 连同画线一起截取图表，与 `@klinecharts/pro` 一致。画布是透明的，因此截图需要与 CSS 涂在
+	 * 连同画线一起截取图表，与 v9 Pro 层一致。画布是透明的，因此截图需要与 CSS 涂在
 	 * 它背后的同一个表面色 —— 从唯一的定义处读取，而不是把十六进制再写一遍。
 	 */
 	const handleScreenshot = useCallback(() => {

@@ -11,10 +11,10 @@ import type { AdaChartProProps } from "./AdaChartPro";
 
 /**
  * The default instrument and its minimum moves, in the same terms
- * `KChartPro` states them: the tick is the fact, the decimal count follows from
+ * the v9 Pro layer states them: the tick is the fact, the decimal count follows from
  * it (`CONTEXT.md`).
  *
- * 默认标的及其最小变动单位，与 `KChartPro` 的表述一致：tick 才是事实，小数位数由它推得
+ * 默认标的及其最小变动单位，与 v9 Pro 层的表述一致：tick 才是事实，小数位数由它推得
  * （见 `CONTEXT.md`）。
  */
 const DEFAULT_TICKER = "BTC-USDT";
@@ -68,11 +68,11 @@ export const ADACHARTPRO_DEFAULTS = {
 } as const;
 
 /**
- * The bar sizes the toolbar offers by default — the same six `KChartPro` shows,
+ * The bar sizes the toolbar offers by default — the same six the v9 Pro layer shows,
  * written in `klinecharts` v10's own `Period` shape (`{ type, span }`) rather
  * than Pro's `{ multiplier, timespan, text }`.
  *
- * 工具栏默认提供的周期档位 —— 与 `KChartPro` 的六档相同，但用 `klinecharts` v10 自己的
+ * 工具栏默认提供的周期档位 —— 与 v9 Pro 层的六档相同，但用 `klinecharts` v10 自己的
  * `Period` 形状（`{ type, span }`）书写，而不是 Pro 的 `{ multiplier, timespan, text }`。
  */
 export const ADACHARTPRO_DEFAULT_PERIODS: Period[] = [
@@ -109,14 +109,14 @@ const PERIOD_LABEL_SUFFIX: Record<PeriodType, string> = {
 /**
  * Maps a v10 `Period` onto an OKX bar string (`1m`, `4H`, `1D`, …).
  *
- * This is a second copy of the rule in `klinecharts-pro/okx-datafeed.ts` on
- * purpose: that one is written against Pro's `Period`, which has a `timespan`
- * where v10 has a `type`, and importing it would tie this layer to the frozen
- * Pro package's types.
+ * This is a second copy of the rule the v9 Pro layer keeps in its
+ * `okx-datafeed.ts`, on purpose: that one is written against Pro's `Period`,
+ * which has a `timespan` where v10 has a `type`, and importing it would tie
+ * this layer to the frozen Pro package's types.
  *
  * 把 v10 的 `Period` 映射为 OKX 的 bar 字符串（`1m`、`4H`、`1D` 等）。
  *
- * 这里刻意重新写一份、而不是复用 `klinecharts-pro/okx-datafeed.ts` 里那份：那份按 Pro 的
+ * 这里刻意重新写一份、而不是复用 v9 Pro 层 `okx-datafeed.ts` 里那份：那份按 Pro 的
  * `Period` 书写，它有 `timespan` 而 v10 是 `type`，直接 import 会把本层绑到已冻结的 Pro
  * 包类型上。
  */

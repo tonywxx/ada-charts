@@ -1,5 +1,13 @@
 # Wrappers do not hide the engine
 
+> **Status — the repo split.** This ADR was written when the repo published
+> three wrappers over three engines. It now publishes **two**: `AdaChart` and
+> `AdaChartPro`, both over `klinecharts` v10. `TChart` (the `lightweight-charts`
+> wrapper) moved to the `tcharts` repo, and `KChartPro` — the frozen v9 wrapper —
+> was removed. The principle below is unchanged and still governs both surviving
+> wrappers; the component names in it are the names this repo used at the time
+> (`KChart` was later renamed `AdaChart` — see ADR-0003).
+
 `TChart`, `KChart` and `KChartPro` present three charting engines whose option shapes genuinely differ (see `CONTEXT.md`: _Engine_, _Wrapper_). We keep each engine's own vocabulary visible through the props interface — flat keys named after library paths, per-domain override bags, `onChartReady` — rather than narrowing to a small intent-named surface. Depth is added **on top of** an engine's surface, never instead of it.
 
 ## Considered options

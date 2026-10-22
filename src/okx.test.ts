@@ -32,8 +32,8 @@ describe("parseOkxRows", () => {
 
 	it("drops a row whose time or close is not a number", () => {
 		// The third copy of this parser used to keep them, so a malformed row
-		// reached `KChartPro` and nowhere else.
-		// 第三份解析器之前会保留这种行，因此坏数据只进得了 `KChartPro`。
+		// reached one Wrapper and nowhere else.
+		// 第三份解析器之前会保留这种行，因此坏数据只进得了某一个 Wrapper。
 		const bars = parseOkxRows([
 			row(1000, 1),
 			["not-a-number", "1", "1", "1", "1", "1", "1"],

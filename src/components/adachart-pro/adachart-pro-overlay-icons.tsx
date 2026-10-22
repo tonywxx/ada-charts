@@ -2,8 +2,8 @@ import { useId, type ReactElement } from "react";
 
 /**
  * The drawing-bar glyphs, ported one-for-one from the inline SVGs inside
- * `@klinecharts/pro`'s compiled bundle (`klinecharts-pro.js`). They are the only
- * part of that package's drawing bar that is neither markup we could re-derive
+ * the v9 Pro layer's compiled bundle. They are the only
+ * part of that layer's drawing bar that is neither markup we could re-derive
  * nor behaviour we could re-implement — the shapes simply are what they are, so
  * they are copied rather than redrawn.
  *
@@ -21,12 +21,12 @@ import { useId, type ReactElement } from "react";
  *    dropdown shows both magnets at once). Those ids are namespaced with
  *    `useId()` so every instance is distinct; the clip itself is kept as-is.
  *
- * The four glyphs for tools `@klinecharts/pro` does not group (`brush`,
+ * The four glyphs for tools the v9 Pro layer does not group (`brush`,
  * `simpleAnnotation`, `simpleTag`, `measure`) have no source to copy and are
  * drawn here in the same 22x22 cell and stroke weight. So are the drawing
  * manager's two (`rename`, `front`), which name no overlay at all.
  *
- * 画线栏图标，逐个移植自 `@klinecharts/pro` 编译产物里内联的 SVG。它们是那个包的画线栏中
+ * 画线栏图标，逐个移植自 v9 Pro 层编译产物里内联的 SVG。它们是那个包的画线栏中
  * 唯一既无法由标记重新推导、也无法由行为重新实现的部分 —— 形状就是形状，因此照搬而非重画。
  *
  * 每个图标保留源文件的几何、viewBox 与表现属性。有两处刻意的不同：
@@ -39,7 +39,7 @@ import { useId, type ReactElement } from "react";
  *    `<clipPath id>` —— 几何上什么也不裁，但只要同一图标同时在屏（模式下拉里两个磁吸图标
  *    就同时可见）就会撞 id。这些 id 用 `useId()` 加了命名空间，使每个实例都不同；裁剪本身原样保留。
  *
- * `@klinecharts/pro` 未归组的四个工具（`brush`、`simpleAnnotation`、`simpleTag`、`measure`）
+ * v9 Pro 层未归组的四个工具（`brush`、`simpleAnnotation`、`simpleTag`、`measure`）
  * 没有源可抄，按同样的 22x22 方格与线宽在此绘制。画线管理器的那两个（`rename`、`front`）
  * 同样如此 —— 它们根本不对应任何 overlay。
  */
@@ -204,10 +204,10 @@ function ChevronIcon(): ReactElement {
 }
 
 /**
- * The four tools `@klinecharts/pro` has no grouped glyph for, drawn to match the
+ * The four tools the v9 Pro layer has no grouped glyph for, drawn to match the
  * copied set: same 22x22 cell, same 1.6 stroke weight, no fill of their own.
  *
- * `@klinecharts/pro` 未归组、因而没有可抄图标的四个工具。按被抄那一套的规格绘制：
+ * v9 Pro 层未归组、因而没有可抄图标的四个工具。按被抄那一套的规格绘制：
  * 同样是 22x22 方格、同样 1.6 的线宽，自身不填色。
  */
 function ExtraIcon({ shape }: { shape: ReactElement }): ReactElement {

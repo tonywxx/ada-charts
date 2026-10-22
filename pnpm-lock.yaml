@@ -11,20 +11,14 @@ importers:
       '@klinecharts/extension':
         specifier: ^0.1.0
         version: 0.1.0(klinecharts@10.1.0)
-      '@klinecharts/pro':
-        specifier: ^0.1.1
-        version: 0.1.1(klinecharts@10.1.0)
       klinecharts:
         specifier: ^10.1.0
         version: 10.1.0
-      klinecharts-v9:
-        specifier: npm:klinecharts@^10.1.0
-        version: klinecharts@10.1.0
       react:
-        specifier: ^19.3.1
+        specifier: ^19.2.8
         version: 19.3.1
       react-dom:
-        specifier: ^19.3.1
+        specifier: ^19.2.8
         version: 19.3.1(react@19.3.1)
     devDependencies:
       '@storybook/addon-docs':
@@ -359,11 +353,6 @@ packages:
     resolution: {integrity: sha512-erJtbq4MBpa1EGYgjR7TNZQ9Rh0RoNGRt4lHFQlCjNolETsA6Xx6+puj7Q7JLTT4rWS4SZJ/UXh2I/4+aRZsUQ==}
     peerDependencies:
       klinecharts: '>=10.0.0'
-
-  '@klinecharts/pro@0.1.1':
-    resolution: {integrity: sha512-ChKW0/ra183CFKevzWSn1HwrLY3YOpERA8wfso+MMTyTYKEKx8Sd7gFTr5Hfn6R4MVru7xSlUHsqjlq/WpXrVA==}
-    peerDependencies:
-      klinecharts: '>=9.0.0'
 
   '@mdx-js/react@3.1.1':
     resolution: {integrity: sha512-f++rKLQgUVYDAtECQ6fn/is15GkEH9+nZPM3MS0RcxVqoTfawHvDlSCH7JbMhAM6uJ32v3eXLvLmLvjGu7PTQw==}
@@ -1508,9 +1497,6 @@ packages:
     resolution: {integrity: sha512-WkUDrojuJs0xkgGf2udWxa3yGBRxPtxUkB79i6aCZLRgc7PM8fZe9TosfPDcvEpQZbuFASnHYmRLBLUbmLOIIA==}
     engines: {node: '>= 12.0.0'}
 
-  lodash@4.18.1:
-    resolution: {integrity: sha512-dMInicTPVE8d1e5otfwmmjlxkZoUpiVLwyeTdUsi/Caj/gfzzblBcCE5sRHV/AsjuCmxWrte2TNGSYuCeCq+0Q==}
-
   loupe@3.2.1:
     resolution: {integrity: sha512-CdzqowRJCeLU72bHvWqwRBBlLcMEtIvGrlvef74kMnV2AolS9Y8xUv1I0U/MNAWMhBlKIoyuEgoJ0t/bbwHbLQ==}
 
@@ -1688,22 +1674,9 @@ packages:
     engines: {node: '>=10'}
     hasBin: true
 
-  seroval-plugins@1.6.11:
-    resolution: {integrity: sha512-LmB3nd8pL39jKHKvnpTUjcjBtNwR8MLty/ydAR8qbfXt5j6/6KqR1atuw8cVmD2/lDxAkvAwq5tI/HsisD9Fqg==}
-    engines: {node: '>=10'}
-    peerDependencies:
-      seroval: ^1.0
-
-  seroval@1.6.11:
-    resolution: {integrity: sha512-hpb6XnMCGN/A+79Uf8V7/iTGkyyyazNn5X0CoCAp7Uy9vT3RT8jZ9GLcnxGoVjg3P8AArbe4ZVHq6C8oT2a0kA==}
-    engines: {node: '>=10'}
-
   sirv@3.0.2:
     resolution: {integrity: sha512-2wcC/oGxHis/BoHkkPwldgiPSYcpZK3JU28WoMVv55yHJgcZ8rlXvuG9iZggz+sU1d4bRgIGASwyWqjxu3FM0g==}
     engines: {node: '>=18'}
-
-  solid-js@1.9.17:
-    resolution: {integrity: sha512-4GAmLOWPfNV8H9Jfn2LSFTpNEG6jiOKPiwd5lnLGQtehHaX6l3TOLzJqQ7mqwB/3k1Yy3zyumFVopmc/tm34ow==}
 
   source-map-js@1.2.2:
     resolution: {integrity: sha512-KGj/8Y43x35aZVDtt+J4mK1hoLGHULMYfSkODJNQjNDC3oW1PqPoxMwo0pLUsWM/UEGzON/NxeHywEfNXNP3Vw==}
@@ -2173,12 +2146,6 @@ snapshots:
   '@klinecharts/extension@0.1.0(klinecharts@10.1.0)':
     dependencies:
       klinecharts: 10.1.0
-
-  '@klinecharts/pro@0.1.1(klinecharts@10.1.0)':
-    dependencies:
-      klinecharts: 10.1.0
-      lodash: 4.18.1
-      solid-js: 1.9.17
 
   '@mdx-js/react@3.1.1(@types/react@19.3.0)(react@19.3.1)':
     dependencies:
@@ -3022,8 +2989,6 @@ snapshots:
       lightningcss-win32-arm64-msvc: 1.33.0
       lightningcss-win32-x64-msvc: 1.33.0
 
-  lodash@4.18.1: {}
-
   loupe@3.2.1: {}
 
   lru-cache@11.5.3: {}
@@ -3252,23 +3217,11 @@ snapshots:
 
   semver@7.8.5: {}
 
-  seroval-plugins@1.6.11(seroval@1.6.11):
-    dependencies:
-      seroval: 1.6.11
-
-  seroval@1.6.11: {}
-
   sirv@3.0.2:
     dependencies:
       '@polka/url': 1.0.0-next.29
       mrmime: 2.0.1
       totalist: 3.0.1
-
-  solid-js@1.9.17:
-    dependencies:
-      csstype: 3.2.3
-      seroval: 1.6.11
-      seroval-plugins: 1.6.11(seroval@1.6.11)
 
   source-map-js@1.2.2: {}
 

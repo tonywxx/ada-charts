@@ -29,11 +29,11 @@ const OUT_FILE = resolve(
 	"../src/__data__/btc-usdt.json",
 );
 
-/** One row of an OHLCV candle, in the shape `TChart` consumes. */
+/** One row of an OHLCV candle, in the shape the chart engines consume. */
 function toCandle(row) {
 	const [timestamp, open, high, low, close, volume] = row;
-	// OKX answers in milliseconds; lightweight-charts wants whole seconds.
-	// OKX 返回毫秒，lightweight-charts 需要整秒。
+	// OKX answers in milliseconds; the engines want whole seconds.
+	// OKX 返回毫秒，图表引擎需要整秒。
 	const time = Math.trunc(Number(timestamp) / 1000);
 	if (!Number.isFinite(time)) throw new Error(`Unparsable timestamp: ${timestamp}`);
 

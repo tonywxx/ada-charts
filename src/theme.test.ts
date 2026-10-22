@@ -2,6 +2,16 @@ import { describe, expect, it } from "vitest";
 import { mergeStyles, themeStyles } from "./components/adachart/adachart-styles";
 import { DARK_THEME, LIGHT_THEME, withAlpha } from "./theme";
 
+type AdaStyles = ReturnType<typeof themeStyles>;
+type BarColors = { upColor?: string; downColor?: string };
+
+// `themeStyles` presets always use the object form of `candle.bar`; klinecharts
+// v10.1 widened the type to a union that also admits a colour callback, so we
+// narrow here rather than asserting on the bare union.
+// `themeStyles` 预设永远使用 `candle.bar` 的对象形式；klinecharts v10.1 把该类型放宽成
+// 一个也包含颜色回调的联合类型，因此在这里收窄，而不是对裸联合类型断言。
+const barColors = (styles: AdaStyles) => (styles.candle?.bar ?? {}) as BarColors;
+
 describe("withAlpha", () => {
 	it("turns a 6-digit hex into rgba", () => {
 		expect(withAlpha("#26a69a", 0.2)).toBe("rgba(38, 166, 154, 0.2)");
@@ -31,10 +41,9 @@ describe("Theme tokens", () => {
 	it("drives klinecharts from the same tokens, in both directions", () => {
 		const light = themeStyles("light");
 		const dark = themeStyles("dark");
-		const bar = light.candle?.bar;
-		expect(bar?.upColor).toBe(LIGHT_THEME.trendUp);
-		expect(bar?.downColor).toBe(LIGHT_THEME.trendDown);
-		expect(dark.candle?.bar?.upColor).toBe(DARK_THEME.trendUp);
+		expect(barColors(light).upColor).toBe(LIGHT_THEME.trendUp);
+		expect(barColors(light).downColor).toBe(LIGHT_THEME.trendDown);
+		expect(barColors(dark).upColor).toBe(DARK_THEME.trendUp);
 	});
 
 	it("shares the trend colours between modes but not the chrome", () => {
@@ -48,8 +57,8 @@ describe("Theme tokens", () => {
 		const merged = mergeStyles(themeStyles("dark"), {
 			candle: { bar: { upColor: "#000000" } },
 		});
-		expect(merged.candle?.bar?.upColor).toBe("#000000");
-		expect(merged.candle?.bar?.downColor).toBe(DARK_THEME.trendDown);
+		expect(barColors(merged).upColor).toBe("#000000");
+		expect(barColors(merged).downColor).toBe(DARK_THEME.trendDown);
 	});
 
 	it("replaces arrays wholesale rather than merging element-wise", () => {

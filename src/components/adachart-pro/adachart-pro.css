@@ -159,10 +159,10 @@
 }
 
 /* The left strip: a column of 32px glyph buttons in a 52px-wide rail, as in
- * `@klinecharts/pro`. `flex: 0 0 auto` keeps the rail at its own width while
+ * the v9 Pro layer. `flex: 0 0 auto` keeps the rail at its own width while
  * the body takes the rest.
  *
- * 左侧条：52px 宽的轨道里一列 32px 图标按钮，与 `@klinecharts/pro` 一致。
+ * 左侧条：52px 宽的轨道里一列 32px 图标按钮，与 v9 Pro 层一致。
  * `flex: 0 0 auto` 让轨道保持自身宽度，余下空间归 body。 */
 .adachart-pro__drawing-bar {
 	/* `border-box` keeps the rail at a true 52px *including* its right border,
@@ -186,11 +186,11 @@
 }
 
 /* A row spans the rail's inner width and centres its glyph there, as in
- * `@klinecharts/pro`. The expand arrow reserves no space — it is painted over
+ * the v9 Pro layer. The expand arrow reserves no space — it is painted over
  * the row's right edge — so the glyph, not the row's contents, is what the eye
  * lines up.
  *
- * 每一行占满轨道的内部宽度、图标在行内居中，与 `@klinecharts/pro` 一致。展开箭头不占位置 ——
+ * 每一行占满轨道的内部宽度、图标在行内居中，与 v9 Pro 层一致。展开箭头不占位置 ——
  * 它被画在行的右缘之上 —— 因此对齐的是图标本身，而不是行的内容盒。 */
 .adachart-pro__drawing-item {
 	position: relative;
@@ -221,12 +221,12 @@
 	background: rgb(127 127 127 / 18%);
 }
 
-/* The chevron is `@klinecharts/pro`'s: a 10px strip pinned to the row's right
+/* The chevron is the v9 Pro layer's: a 10px strip pinned to the row's right
  * edge, kept invisible until the row is hovered, the arrow is focused, or the
  * sub-list is open. At rest the rail is a clean column of glyphs — the arrow
  * only appears for the row you are actually pointing at.
  *
- * 箭头取自 `@klinecharts/pro`：一条 10px 窄条钉在行的右缘，在行被悬停、箭头被聚焦或子列表
+ * 箭头取自 v9 Pro 层：一条 10px 窄条钉在行的右缘，在行被悬停、箭头被聚焦或子列表
  * 已展开之前保持不可见。静止时轨道是一列干净的图标 —— 箭头只在鼠标真正指向的那一行出现。 */
 .adachart-pro__icon-arrow {
 	position: absolute;

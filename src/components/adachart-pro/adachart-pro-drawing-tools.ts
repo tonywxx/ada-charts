@@ -2,12 +2,12 @@
  * The drawing bar's structure and wording: which tools sit behind which group
  * glyph, and what each one is called in each locale.
  *
- * The grouping is copied from `@klinecharts/pro`'s drawing bar rather than
+ * The grouping is copied from the v9 Pro layer's drawing bar rather than
  * invented here, so the same tool is behind the same glyph in both Pro layers:
  * five groups — single lines, channels, shapes, Fibonacci, waves — each headed
  * by its first member's glyph, which is also what a click on that glyph arms.
  *
- * `@klinecharts/pro` leaves four of the tools `AdaChart` can draw out of those
+ * The v9 Pro layer leaves four of the tools `AdaChart` can draw out of those
  * groups (`brush`, `simpleAnnotation`, `simpleTag`, `measure`). They are not
  * dropped: they form a sixth "More" group, so removing the top toolbar's
  * drawing dropdown does not cost a tool. Everything about that group except its
@@ -15,21 +15,21 @@
  *
  * 画线栏的结构与文案：哪些工具藏在哪个组图标之后，以及它们在每种语言下叫什么。
  *
- * 分组照抄 `@klinecharts/pro` 的画线栏而非自己发明，因此同一个工具在两层 Pro 里位于同一个
+ * 分组照抄 v9 Pro 层的画线栏而非自己发明，因此同一个工具在两层 Pro 里位于同一个
  * 图标之后：五组 —— 单线、通道、图形、斐波那契、波浪 —— 每组以首个成员的图标领衔，点击该
  * 图标选中的也正是它。
  *
- * `@klinecharts/pro` 把 `AdaChart` 能画的工具里的四个（`brush`、`simpleAnnotation`、
+ * v9 Pro 层把 `AdaChart` 能画的工具里的四个（`brush`、`simpleAnnotation`、
  * `simpleTag`、`measure`）留在了这些组之外。它们没有被丢掉：它们构成第六个「更多」组，因此
  * 移除顶部工具栏的画线下拉不会损失任何工具。该组除成员外的一切都是本层自己的 —— 源里没有对应物。
  */
 
 /**
- * The `groupId` every overlay drawn from the bar carries. `@klinecharts/pro` uses
+ * The `groupId` every overlay drawn from the bar carries. The v9 Pro layer uses
  * this literal, and keeping it makes "clear all" (`removeOverlay({ groupId })`)
  * mean the same thing on both layers.
  *
- * 从画线栏画出的每一条 overlay 都带这个 `groupId`。`@klinecharts/pro` 用的是这同一字面量，
+ * 从画线栏画出的每一条 overlay 都带这个 `groupId`。v9 Pro 层用的是这同一字面量，
  * 沿用它可以让「清空全部」（`removeOverlay({ groupId })`）在两层上含义一致。
  */
 export const ADACHARTPRO_DRAWING_GROUP_ID = "drawing_tools";
@@ -138,11 +138,11 @@ export const ADACHARTPRO_DRAWING_GROUPS: readonly AdaChartProDrawingGroup[] = [
 
 /**
  * Drawing-bar strings, per locale. The thirty grouped tools keep the wording
- * `@klinecharts/pro` uses, so the two Pro layers read alike; the four tools the
+ * The v9 Pro layer uses, so the two Pro layers read alike; the four tools the
  * source leaves ungrouped, and the controls the source labels by glyph alone,
  * are named here.
  *
- * 画线栏文案，按语言分。归组的三十个工具沿用 `@klinecharts/pro` 的措辞，使两层 Pro 读起来
+ * 画线栏文案，按语言分。归组的三十个工具沿用 v9 Pro 层的措辞，使两层 Pro 读起来
  * 一致；源文件未归组的四个工具、以及源文件只用图标表示的那些控件，在此命名。
  */
 export const ADACHARTPRO_DRAWING_MESSAGES: Record<

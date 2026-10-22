@@ -1,16 +1,40 @@
 # TChartPro vs KChartPro vs AdaChartPro：性能对比报告
 
+> **状态：历史记录（仓库拆分之后）。** 这份报告比较的是**三个** Pro 级组件，分属两个
+> 渲染引擎。拆分之后它们不再同处一个仓库：
+>
+> - **`TChartPro`** → 移到了 **`tcharts` 仓库**（`~/github/tcharts`），在那里仍然构建、
+>   仍然导出、仍然冻结。
+> - **`KChartPro`** → 已**删除**（它 v9 的包装层）。
+> - **`AdaChartPro`** → 留在本仓库，是这里唯一发布的 Pro 组件。
+>
+> 因此：文中指向 `TChartPro` 的源码链接改指 `tcharts` 仓库；指向 `KChartPro` 的源码
+> 链接标为已删除。**报告里的数字没有重测**——测量用的 `perf/` 目录与
+> `scripts/bench-charts.mjs` 已随基准工具一并从本仓库移除，`pnpm perf` 在这里已不
+> 存在，所以下文「怎么复现」一节记录的是当时的做法，而非本仓库当前的可用命令。
+> 报告保留原样，是因为 ADR-0003 的决策与它的数字都建立在这些测量之上。
+>
+> **Status — a historical record (after the repo split).** This report compared
+> **three** Pro components across two rendering engines. They no longer live in
+> one repository: `TChartPro` moved to the **`tcharts` repo** (still built,
+> exported and frozen there), `KChartPro` was **removed**, and `AdaChartPro` is
+> the only Pro component this repo publishes. Source links to `TChartPro` now
+> point at `tcharts`; links to `KChartPro` are marked as removed. **The numbers
+> were not re-measured**: the `perf/` harness and `scripts/bench-charts.mjs` were
+> removed with the benchmarking tooling, so `pnpm perf` no longer exists here and
+> the "how to reproduce" section records what was done at the time.
+
 三个 Pro 级全功能金融 K 线组件，建立在**两种渲染引擎**上：
 
 | | 组件 | 引擎 | 位置 |
 | --- | --- | --- | --- |
-| T | `TChartPro` | `lightweight-charts` v5 + `lightweight-charts-drawing` | [TChartPro.tsx](file:///Users/tony/github/ada-charts/src/components/lightweight-charts-pro/TChartPro.tsx) |
-| K | `KChartPro` | `@klinecharts/pro`（内含 `klinecharts` v9 运行时） | [KChartPro.tsx](file:///Users/tony/github/ada-charts/src/components/klinecharts-pro/KChartPro.tsx) |
+| T | `TChartPro` | `lightweight-charts` v5 + `lightweight-charts-drawing` | [TChartPro.tsx](file:///Users/tony/github/tcharts/src/components/lightweight-charts-pro/TChartPro.tsx) — 已在 `tcharts` 仓库 |
+| K | `KChartPro` | `@klinecharts/pro`（内含 `klinecharts` v9 运行时） | 已删除（曾在 `src/components/klinecharts-pro/KChartPro.tsx`） |
 | A | `AdaChartPro` | `klinecharts` v10（经 `AdaChart`） | [AdaChartPro.tsx](file:///Users/tony/github/ada-charts/src/components/adachart-pro/AdaChartPro.tsx) |
 
 K 与 A 是同一个引擎家族的两代：K 锁在 v9 的第三方 Pro 封装里，A 建在 v10 原生 Wrapper 之上，两者不是同一份代码的两个配置。
 
-所有数字取自 [perf/results.json](file:///Users/tony/github/ada-charts/perf/results.json)，由 [scripts/bench-charts.mjs](file:///Users/tony/github/ada-charts/scripts/bench-charts.mjs) 在无头 Chromium 里跑出。报告里没有一个手写的数字。
+所有数字取自 `perf/results.json`，由 `scripts/bench-charts.mjs` 在无头 Chromium 里跑出（两者已随基准工具从本仓库移除）。报告里没有一个手写的数字。
 
 ---
 
@@ -60,10 +84,10 @@ K 与 A 是同一个引擎家族的两代：K 锁在 v9 的第三方 Pro 封装�
 
 **在压缩过的生产包上测，不测 dev 模式。** `vite dev` 下 React 的开发构建渲染成本高好几倍，而 TChartPro 在 React 里做的事远多于另外两者，dev 模式会系统性地偏袒更轻的那一层。驱动脚本先打一份 production bundle，再用静态服务端出来。
 
-- **页面**：[perf/harness.tsx](file:///Users/tony/github/ada-charts/perf/harness.tsx) 把任一 Wrapper 挂进固定的 900×520 容器，把测量值挂到 `window.__perf`。
-- **数据**：[perf/dataset.ts](file:///Users/tony/github/ada-charts/perf/dataset.ts) 用固定种子的 PRNG 生成合成 OHLCV（首价 60000，±1% 随机游走），保证可复现。
-- **三引擎数据源**：[perf/feeds.ts](file:///Users/tony/github/ada-charts/perf/feeds.ts) 按各自的契约实现（T 用 `TChartProDatafeed`、K 用 `Datafeed`、A 用 v10 的 `DataLoader`），并把订阅回调暴露给驱动，由驱动自己按帧推送，不等定时器。三份数据源的取历史路径都带**同一个** `setTimeout(0)` 的 I/O 边界，避免任一引擎拿到更便宜的历史路径。
-- **两版 klinecharts 同时在场**：K 需要 v9，A 与 `@klinecharts/extension` 需要 v10，所以打包含**两份**。原先「把裸 `klinecharts` 全局别名到 v9」的写法在页面上没有 v10 时无害，现在不行了，改成了 ADR-0002 里 `vite.config.ts` 用的那种 **importer 限定重定向**（只有 `@klinecharts/pro` 自己的引用走 v9），并由 [scripts/bench-charts.mjs](file:///Users/tony/github/ada-charts/scripts/bench-charts.mjs) 里同名的 `klinechartsProUsesV9()` 插件实现。
+- **页面**：`perf/harness.tsx` 把任一 Wrapper 挂进固定的 900×520 容器，把测量值挂到 `window.__perf`。
+- **数据**：`perf/dataset.ts` 用固定种子的 PRNG 生成合成 OHLCV（首价 60000，±1% 随机游走），保证可复现。
+- **三引擎数据源**：`perf/feeds.ts` 按各自的契约实现（T 用 `TChartProDatafeed`、K 用 `Datafeed`、A 用 v10 的 `DataLoader`），并把订阅回调暴露给驱动，由驱动自己按帧推送，不等定时器。三份数据源的取历史路径都带**同一个** `setTimeout(0)` 的 I/O 边界，避免任一引擎拿到更便宜的历史路径。
+- **两版 klinecharts 同时在场**：K 需要 v9，A 与 `@klinecharts/extension` 需要 v10，所以打包含**两份**。原先「把裸 `klinecharts` 全局别名到 v9」的写法在页面上没有 v10 时无害，现在不行了，改成了 ADR-0002 里 `vite.config.ts` 用的那种 **importer 限定重定向**（只有 `@klinecharts/pro` 自己的引用走 v9），并由 `scripts/bench-charts.mjs` 里同名的 `klinechartsProUsesV9()` 插件实现。
 - **浏览器**：无头 Chromium，`--js-flags=--expose-gc --enable-precise-memory-info`（前者给出真正的 GC，后者让 `performance.memory` 精细而非量化），60Hz 帧间隔实测 16.6ms。
 - **不碰私有字段**：三边都只走公开契约。KChartPro 没有数据访问器，所以它靠**引擎自己的 loading 指示器**就绪作信号（用 MutationObserver 捕捉，而不是逐帧轮询 —— 面对本地数据源指示器只存在约一个宏任务，轮询会整个错过然后白等满超时）；TChartPro 靠主系列持有全部 K 线；AdaChartPro 靠 v10 交出的 `Chart.getDataList()`。
 
@@ -84,6 +108,17 @@ K 与 A 是同一个引擎家族的两代：K 锁在 v9 的第三方 Pro 封装�
 **怎么读「贴着地板」的格子**：墙钟 ≈ 1970ms 表示更新没有成为瓶颈，是测试台每帧一次的循环在限速 —— 这类格子只能读作「≥60 次/秒，未测出上限」。
 
 ### 怎么复现
+
+> **本仓库已无法复现。** 下面两条命令连同 `perf/` 目录、`scripts/bench-charts.mjs`
+> 一起从本仓库移除了（它们测的是三个组件的对比，而这三个组件已经分属两个仓库）。
+> 本仓库现在只发布 `AdaChart` / `AdaChartPro`，没有对照组的矩阵也就无从谈起。
+> 下面的记录保留当时的方法，供 `tcharts` 仓库与将来重建基准时参考。
+>
+> **Not reproducible in this repo any more.** The two commands below, together
+> with the `perf/` directory and `scripts/bench-charts.mjs`, were removed with
+> the benchmarking tooling — they measured a three-way comparison, and those
+> three components now live in two repositories. This repo publishes only
+> `AdaChart` / `AdaChartPro`, so there is no matrix to run.
 
 ```bash
 pnpm perf              # 完整矩阵
@@ -229,7 +264,7 @@ TChartPro 把 `lightweight-charts-drawing` 打进自己的包，但 `lightweight
 
 ### TChartPro 的成本模型
 
-指标计算在组件里，代码在 [TChartPro.tsx](file:///Users/tony/github/ada-charts/src/components/lightweight-charts-pro/TChartPro.tsx#L361-L371)：
+指标计算在组件里，代码在 [TChartPro.tsx](file:///Users/tony/github/tcharts/src/components/lightweight-charts-pro/TChartPro.tsx#L361-L371)：
 
 ```tsx
 const layer = useMemo(
@@ -240,14 +275,14 @@ layer.advance(data);
 const tracks = layer.tracks;
 ```
 
-**`data` 不在依赖里。** 指标层（[t-chart-pro-indicators.ts](file:///Users/tony/github/ada-charts/src/components/lightweight-charts-pro/t-chart-pro-indicators.ts#L1253-L1490)）比每一根 K 线活得久：每套指标集合与主题只建立一次，其后的每一份数据集都是「跟随」而非「重建」。跟随之所以可行，靠的是两条性质：
+**`data` 不在依赖里。** 指标层（[t-chart-pro-indicators.ts](file:///Users/tony/github/tcharts/src/components/lightweight-charts-pro/t-chart-pro-indicators.ts#L1253-L1490)）比每一根 K 线活得久：每套指标集合与主题只建立一次，其后的每一份数据集都是「跟随」而非「重建」。跟随之所以可行，靠的是两条性质：
 
 - `mergeCandle` 只重建数据集的末项，它之前的数组元素按引用带过 —— 因此逐元素比较引用即可**证明**前缀未变；
 - 27 个指标都是因果的（index `i` 只依赖 `bars[0..i]`），前缀未变即取值未变。
 
 一旦证明不成立（换了标的、有 K 线被排序插进中间），就退回整算 —— 所以跟随是「可证明时为真」，不是赌。
 
-推送侧也从「每条 series 全量 `setData`」变成尾部 `pop/push` + 每根一次 `update`（[TChartPro.tsx](file:///Users/tony/github/ada-charts/src/components/lightweight-charts-pro/TChartPro.tsx#L405-L440)）：
+推送侧也从「每条 series 全量 `setData`」变成尾部 `pop/push` + 每根一次 `update`（[TChartPro.tsx](file:///Users/tony/github/tcharts/src/components/lightweight-charts-pro/TChartPro.tsx#L405-L440)）：
 
 ```tsx
 const plan = layer.advance(data);
@@ -308,7 +343,7 @@ plan.pushes.forEach((push, index) => {
 
 ### KChartPro 的成本模型
 
-指标、数据、绘制全在引擎内部，v9 按增量维护其数据列表并在渲染时只画可见区间。本层做的事极少：`KLineChartPro` 只发布 theme / styles / locale / timezone / symbol / period 的 set/get，[KChartPro.tsx](file:///Users/tony/github/ada-charts/src/components/klinecharts-pro/KChartPro.tsx#L234-L256) 就只镜像这几个。因此：
+指标、数据、绘制全在引擎内部，v9 按增量维护其数据列表并在渲染时只画可见区间。本层做的事极少：`KLineChartPro` 只发布 theme / styles / locale / timezone / symbol / period 的 set/get，`KChartPro.tsx`（已随该组件从本仓库删除）就只镜像这几个。因此：
 
 - 首屏与数据量脱钩（`getHistoryKLineData` 的数组交给引擎后，引擎自己按需取用）；
 - 内存只保留引擎需要的那份数据结构（30000 + 指标 15.71MB）；
@@ -354,8 +389,8 @@ A 的架构与 K 是同一类 —— 指标、数据、绘制、画线都在引�
 2. **内存随「K 线数 × 指标数」线性膨胀**：每根 6.56KB（含 6 指标），是同规模 A 的 11.8 倍、K 的 12.5 倍；30000 根 + 指标达到 196.75MB。指标画成 series 就意味着每个点都是一个引擎侧对象，这笔开销是架构自带的。
 3. **首屏超线性增长**：从 500 根的 30.5ms 到 30000 根的 396.4ms（13.0 倍），中途 10000 根就已是 141.85ms。
 4. **指标算法由本仓库维护。** 与引擎升级解耦是好事，但正确性也要自己兜（此前就修过 MACD 的 DEA 初值、TRIX 的 null 前值提前返回、CR 的均线越界读取三处偏差）。
-5. **文档漂移**：[README.md](file:///Users/tony/github/ada-charts/README.md#L18) 写「68 tool types」，而 `getToolRegistry().getAll()` 实际返回 **67**。报告以运行时注册表为准。
-6. **已冻结**（ADR-0003）：不再接收新功能，只保留构建、导出与本文档的可复现性。
+5. **文档漂移**：当时的 `README.md` 写「68 tool types」，而 `getToolRegistry().getAll()` 实际返回 **67**。报告以运行时注册表为准。`TChartPro` 移到 `tcharts` 仓库后，本仓库的 `README.md` 里已没有这一行；`tcharts` 仓库的 `README.md` 仍需以运行时注册表为准。
+6. **已冻结**（ADR-0003）：不再接收新功能，只保留构建、导出与本文档的可复现性。拆分后它整体移到了 `tcharts` 仓库，在那里仍然构建、仍然导出。
 
 ### KChartPro
 
@@ -378,7 +413,7 @@ A 的架构与 K 是同一类 —— 指标、数据、绘制、画线都在引�
 6. **不可测。** 数据与图表实例私有，测试只能依赖 DOM 信号与最终像素，无法像 TChartPro 那样断言指标数值。
 7. **DOM 节点最多**（123 vs A 的 29 与 T 的 46），工具栏是引擎自带的黑盒，样式定制只能走样式表覆盖，还要额外背 35.55KB CSS（A 只需 2.18KB）。
 8. **画线工具最少**（32 个 overlay，A 是 34、T 是 67），且画线状态留在引擎内部，没有序列化/回灌接口。
-9. **已冻结**（ADR-0003）：保留构建与导出，不再投新功能。
+9. **已冻结**（ADR-0003）：保留构建与导出，不再投新功能。拆分时它被**删除**（不是移走）——它是三者中唯一把 v9 运行时钉进本仓库产物的组件，而它的能力已被 v10 原生的 `AdaChartPro` 覆盖。
 
 ### AdaChartPro
 
@@ -410,6 +445,11 @@ A 的架构与 K 是同一类 —— 指标、数据、绘制、画线都在引�
 
 **这张表已经不再是「二选一」。** [ADR-0003](file:///Users/tony/github/ada-charts/docs/adr/0003-adachart-pro-is-the-v10-native-pro-layer.md) 把 `AdaChart` / `AdaChartPro` 定为唯一在开发的主线，`TChartPro` 与 `KChartPro` 冻结保留。所以下面回答的是「什么情况下仍然值得用 T 或 K，以及那样做要放弃什么」。
 
+> **拆分之后这张表怎么读。** 表里 T 与 K 两行的建议是在三者同处一个仓库时写的。
+> 现在：`TChartPro` 在 **`tcharts` 仓库**（要它就去那里取，代价与下表所写一致）；
+> `KChartPro` **已被删除**，「继续用（冻结）」这一行不再成立——它是历史上「可以不动」
+> 的选项，而不是现在的选项。本仓库能选的只有 `AdaChartPro`。
+
 | 场景 | 建议 | 理由 |
 | --- | --- | --- |
 | 新功能、新页面、任何默认选择 | **AdaChartPro** | 内存 16.64MB 与流式 21.77ms/根都与 K 同级，本层产物最小（43.47KB gzip），引擎可外链且可升级 |
@@ -433,8 +473,8 @@ A 的架构与 K 是同一类 —— 指标、数据、绘制、画线都在引�
 4. **`firstPaintMs` 含不足一帧的绘制等待**，所以几十毫秒的那些格子里有一部分不是引擎计算。要看纯计算请对比 `engineReadyMs` 与内存。
 5. **流式场景是 60 次/秒的极限压力**，高于真实 1D K 线的更新频率。标「贴地板」的格子测不出上限，只证明「至少 60 次/秒」。
 6. **交互项的分辨率不足；上一轮的「缺一项」已经关闭。** 28–34ms 的「停止重绘」落在判据自身的地板（2 帧）附近，只能得出「三者都在 2 帧内停止」，不能区分持续拖拽下的表现。上一轮 AdaChartPro 的两格 +指标 下该判据返回 `null`，根因在产品而不在判据：`canvasSignature()` 在取样 canvas 高度为 0 时返回 `null`（见 4.5），而当时主图指标各自开 pane 把价格面板挤成了 0 高。修复后两格都读到了真实值（30000 +指标 31.9 / 33.6ms、2000 +指标 32.7 / 33.4ms），这一缺口关闭。
-7. **30 000 根是本仓库 `OKX_HISTORY_LIMIT = 300` 的 100 倍**，属于压力测试而非典型负载。`pnpm test:storybook` 目前有一个与本次改动无关的既有问题（`TChart.stories.tsx` 的 `Object is disposed`，来自 lightweight-charts 的 rAF 竞态）。
+7. **30 000 根是本仓库 `OKX_HISTORY_LIMIT = 300` 的 100 倍**，属于压力测试而非典型负载。当时 `pnpm test:storybook` 有一个与本次改动无关的既有问题（`TChart.stories.tsx` 的 `Object is disposed`，来自 lightweight-charts 的 rAF 竞态）；`TChart` 及其 story 现已移至 `tcharts` 仓库。
 8. **每次运行都是新的挂载/卸载序列**，堆数字依赖 `--expose-gc` 的真实回收；没有该标志时 `retainedHeapMB` 会是 `null` 而不是一个猜测值。
 9. **第五节 TChartPro 的分项分解来自一次性临时探针，不能由 `pnpm perf` 复现。** 那些 `performance.now()` 标记与 CDP `Performance.getMetrics` 读数是定位过程中临时加入、定位完即删除的，仓库里没有留下插桩代码，所以 `perf/results.json` 只包含第四节那张表里的量。两点注意：分项表里若干标记相互嵌套（例如 `decideDataPatch` 跑在 `TChart` 的数据 effect 之内），因此「本仓库代码合计」是求和后的**上限**；单条分项来自一次运行，看量级可以，逐位比较不必当真。结论所依赖的三个量级 —— 96.5% 是脚本执行、布局与样式重算为 0、指标算术只占 13.5ms/根 —— 都远大于这些误差。
 10. **`firstPaintMs` 会随机器负载漂移，尤其是最重的两格。** 30000 根 + 6 指标：T 侧本轮 396.4ms（上一轮同格 424.65ms、再上一轮 420.0ms），K 侧 36.5ms（上一轮 38.75ms），A 侧 74.35ms。这类读数更适合当量级看，不宜当精确值引用，倍数关系比绝对值稳定。
-11. **本页现在同时加载 v9 与 v10 两份 klinecharts。** 两份都在 `perf/dist` 里、都在测试开始前就已求值，三列共享同一份基线；但这也意味着本页的 bundle 比早先的双引擎版本更大，跨报告版本比较绝对值时要注意这一点。功能数量在**预热之后**读取，因为 `@klinecharts/extension` 的画线工具在首次挂载时才注册 —— 否则 A 的 overlay 数会被少报成 16。
+11. **测量当时同时加载了 v9 与 v10 两份 klinecharts。** 两份都在 `perf/dist` 里、都在测试开始前就已求值，三列共享同一份基线；但这也意味着当时的 bundle 比早先的双引擎版本更大，跨报告版本比较绝对值时要注意这一点。功能数量在**预热之后**读取，因为 `@klinecharts/extension` 的画线工具在首次挂载时才注册 —— 否则 A 的 overlay 数会被少报成 16。（该测量页连同 `perf/` 目录已从本仓库移除；本仓库现在只发布 v10 引擎。）
