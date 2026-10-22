@@ -11,7 +11,7 @@
 	},
 	"include": [
 		"src/components/adachart/AdaChart.tsx",
-		"src/components/adachart-pro/AdaChartPro.tsx",
+		"src/components/adachart-pro/index.ts",
 		"src/chart-link.ts"
 	],
 	"exclude": [

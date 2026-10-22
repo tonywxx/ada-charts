@@ -873,3 +873,65 @@
 .adachart-pro input[type="range"] {
 	accent-color: var(--adacp-accent);
 }
+
+.ada-chart-toolbar, .ada-chart-types { display: flex; align-items: center; gap: 4px; }
+.ada-chart-toolbar { gap: 8px; order: -1; }
+.ada-chart-toolbar button, .ada-chart-period-menu button { border: 0; color: var(--adacp-text); font: inherit; cursor: pointer; }
+.ada-chart-types button { display: grid; place-items: center; width: 28px; height: 28px; padding: 6px; border-radius: 7px; background: transparent; color: var(--adacp-muted); }
+.ada-chart-types button[aria-pressed="true"] { background: var(--adacp-panel); }
+.ada-chart-toolbar svg, .ada-chart-period-menu svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.ada-chart-types svg { width: 15px; height: 15px; }
+.ada-chart-toolbar .ada-chart-period-trigger { anchor-name: --ada-chart-period; display: flex; align-items: center; gap: 4px; height: 26px; padding: 3px 8px; border-radius: 4px; background: transparent; font-size: inherit; }
+.ada-chart-period-trigger svg { width: 16px; color: var(--adacp-muted); }
+.ada-chart-period-menu { position: fixed; inset: auto; position-anchor: --ada-chart-period; position-area: bottom; position-try-fallbacks: flip-block; margin: 4px 0; width: 96px; max-height: min(530px, 80dvh); overflow-y: auto; padding: 6px; border: 1px solid var(--adacp-border); border-radius: 12px; background: var(--adacp-panel); color: var(--adacp-text); }
+.ada-chart-period-menu button { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 32px; padding: 6px 8px; border-radius: 9px; background: transparent; font-size: 12px; text-align: left; }
+.ada-chart-period-menu button[aria-pressed="true"], .ada-chart-period-menu button:hover { background: var(--adacp-bar); }
+.ada-chart-period-menu svg { color: var(--adacp-muted); }
+.ada-chart-toolbar button:focus-visible, .ada-chart-period-menu button:focus-visible { outline: 2px solid var(--adacp-text); outline-offset: -2px; }
+
+.ada-chart-toolbar .ada-chart-reset { padding: 4px 8px; border-radius: 4px; background: var(--adacp-accent); color: var(--adacp-label); }
+.ada-chart-toolbar .ada-chart-reset:disabled { background: transparent; color: var(--adacp-muted); opacity: .5; cursor: default; }
+
+.ada-chart-quote { position: absolute; z-index: 2; width: 248px; max-width: calc(100% - 88px); box-sizing: border-box; padding: 12px 14px; border: 1px solid var(--adacp-border); border-radius: 8px; background: color-mix(in srgb, var(--adacp-surface) var(--tooltip-background-opacity), transparent); color: var(--adacp-text); font-size: 12px; line-height: 1.5; box-shadow: 0 4px 16px #0002; pointer-events: none; }
+.ada-chart-quote strong { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; font-size: 12px; overflow-wrap: anywhere; }
+.ada-chart-quote strong span { flex: none; color: var(--adacp-muted); font-weight: 500; }
+.ada-chart-quote time { display: block; margin-top: 4px; font-size: 10px; color: var(--adacp-muted); overflow-wrap: anywhere; }
+.ada-chart-quote dl { display: grid; gap: 6px; margin: 10px 0 0; padding-top: 10px; border-top: 1px solid var(--adacp-border); font-variant-numeric: tabular-nums; }
+.ada-chart-quote dl > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 16px; }
+.ada-chart-quote dt { color: var(--adacp-muted); }
+.ada-chart-quote dd { margin: 0; text-align: right; font-weight: 500; }
+.ada-chart-tooltip-settings { min-width: 0; margin: 10px 0 0; padding: 12px 0 0; border: 0; border-top: 1px solid var(--adacp-border); }
+.ada-chart-tooltip-settings legend { padding: 0 8px 0 0; font-weight: 600; }
+.ada-chart-tooltip-opacity { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 6px 12px; margin-top: 12px; }
+.ada-chart-tooltip-opacity output { color: var(--adacp-muted); font-variant-numeric: tabular-nums; }
+.adachart-pro .ada-chart-tooltip-opacity input[type="range"] { grid-column: 1 / -1; width: 100%; padding: 0; border: 0; accent-color: var(--adacp-accent); }
+
+.adachart-pro label { margin: 0; font: inherit; color: inherit; }
+.adachart-pro input, .adachart-pro select { color: inherit; background: var(--adacp-input); border: 1px solid var(--adacp-border); border-radius: 4px; font: inherit; min-height: 0; padding: 3px 6px; max-width: 100%; }
+.adachart-pro .adachart-pro__number { width: 80px; }
+.adachart-pro .adachart-pro__color { width: 36px; height: 24px; padding: 1px; }
+.adachart-pro select { width: auto; flex: 0 1 50%; }
+.adachart-pro input[type="checkbox"] { width: 16px; height: 16px; min-height: 16px; padding: 0; flex: none; }
+.adachart-pro .adachart-pro__field-label { flex: 1; }
+
+.adachart-pro[data-fill] { display: flex; flex-direction: column; min-height: 0; }
+.adachart-pro[data-fill] > .adachart-pro__main { flex: 1; min-height: 0; }
+.adachart-pro[data-theme="dark"] { --adacp-bar: #292929; --adacp-panel: #292929; --adacp-surface: #292929; }
+
+.chart-settings { flex: none; font-size: 12px; max-height: 180px; overflow: auto; padding: 5px 0; }
+.chart-settings summary { cursor: pointer; margin-bottom: 6px; }
+.chart-controls input[type='checkbox'] { width: 14px; min-height: 14px; accent-color: var(--adacp-accent, #1677ff); }
+.indicator-controls { margin-top: 8px; }
+.indicator-controls input[type='number'] { width: 60px; min-height: 28px; padding: 4px; }
+
+
+.adachart-pro__data-status { position: absolute; right: 8px; top: 8px; z-index: 5; padding: 4px 8px; background: var(--adacp-panel); color: var(--adacp-text); border: 1px solid var(--adacp-border); border-radius: 4px; }
+.adachart-pro__data-status button { margin-left: 8px; font: inherit; color: inherit; background: transparent; border: 1px solid var(--adacp-border); cursor: pointer; }
+
+.chart-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; flex: none; }
+.chart-controls label { display: flex; gap: 6px; align-items: center; font-size: 12px; }
+.chart-controls select { width: auto; min-height: 28px; padding: 4px 6px; }
+
+dialog.adachart-pro__modal { margin: 0; color: var(--adacp-text); font: inherit; }
+dialog.adachart-pro__modal::backdrop { background: rgba(0, 0, 0, 0.35); }
+.adachart-pro__modal-backdrop:has(+ dialog[open]) { display: none; }

@@ -282,6 +282,8 @@ export type AdaChartIndicator = (IndicatorCreate | string) & {
 export interface AdaChartProps
 	extends AdaChartConvenienceStyleProps,
 		AdaChartEventProps {
+	/** Fill the height of a sized parent. */
+	fill?: boolean;
 	// ------------------------------------------------------------------ data
 	/**
 	 * Candles to render. `timestamp` is epoch **milliseconds**, matching what
@@ -426,6 +428,8 @@ export interface AdaChartProps
 	rightMinVisibleBarCount?: number;
 	/** y 轴所在侧。Which side the y-axis sits on. */
 	yAxisPosition?: "left" | "right";
+	/** Reverse the main price axis. */
+	reverseAxis?: boolean;
 
 	// ----------------------------------------------------------------- escape
 	/**
@@ -628,6 +632,10 @@ function AdaChart(props: AdaChartProps) {
 		}
 	}, [resolved, engine]);
 
+  useEffect(() => {
+    if (props.reverseAxis !== undefined) engine()?.overrideYAxis({ paneId: 'candle_pane', reverse: props.reverseAxis });
+  }, [props.reverseAxis, engine]);
+
 	// Preserve user pan/zoom when unrelated props or stream state rerender the chart.
 	useEffect(() => {
 		engine()?.setOffsetRightDistance(resolved.offsetRightDistance);
@@ -742,6 +750,10 @@ function AdaChart(props: AdaChartProps) {
 		indicatorIdsRef.current = created;
 	}, [indicatorKey, engine]);
 
+  useEffect(() => {
+    if (props.yAxisPosition) engine()?.overrideYAxis({ position: props.yAxisPosition });
+  }, [props.yAxisPosition, indicatorKey, engine]);
+
 	// Panes: applied on top of whatever the indicators created.
 	// 面板：叠加在指标所创建的面板之上。
 	const paneKey = structuralKey(resolved.panes);
@@ -777,7 +789,7 @@ function AdaChart(props: AdaChartProps) {
 		<div
 			style={{
 				width: resolved.autoSize ? "100%" : resolved.width,
-				height: resolved.height,
+				height: props.fill ? "100%" : resolved.height,
 				position: "relative",
 				background: resolved.backgroundColor,
 			}}

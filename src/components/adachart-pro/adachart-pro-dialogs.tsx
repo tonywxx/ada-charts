@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { messageFor } from "./adachart-pro-messages";
 import {
 	ADACHARTPRO_SETTING_CANDLE_TYPES,
@@ -15,10 +15,8 @@ import {
  * strip controls — the toolbar's job is to name the things it can open, and
  * every one of these needs a draft state of its own while it is open.
  *
- * All three are modal: they reuse the screenshot dialog's backdrop / dialog pair
- * (`position: fixed` siblings, the backdrop a real `<button>`), so a click
- * outside, a click on `×` and `Escape` all close them, and a keyboard user can
- * reach every one of those without a mouse.
+ * All three use the native modal top layer so transformed chart containers cannot
+ * cover them. A click outside, a click on `×` and `Escape` close the dialog.
  *
  * 三个设置对话框：外观、时区与指标参数。
  *
@@ -56,6 +54,12 @@ interface ModalProps {
  */
 function Modal(props: ModalProps) {
 	const { onClose } = props;
+  const dialog = useRef<HTMLDialogElement>(null);
+  useLayoutEffect(() => {
+    const element = dialog.current;
+    element?.showModal();
+    return () => element?.close();
+  }, []);
 
 	useEffect(() => {
 		const onKeyDown = (event: KeyboardEvent) => {
@@ -66,12 +70,7 @@ function Modal(props: ModalProps) {
 	}, [onClose]);
 
 	return (
-		// The backdrop and the dialog are siblings, both `position: fixed`: the
-		// backdrop can therefore be a real button — clickable, focusable and
-		// keyboard-operable — without the dialog's own clicks bubbling into it.
-		//
-		// 遮罩与对话框是兄弟、都是 `position: fixed`：因此遮罩可以是真正的按钮 —— 可点击、
-		// 可聚焦、可键盘操作 —— 而对话框自身的点击不会冒泡进去。
+		// The native top layer escapes transformed grid windows while inheriting theme tokens.
 		<>
 			<button
 				type="button"
@@ -79,8 +78,13 @@ function Modal(props: ModalProps) {
 				className="adachart-pro__modal-backdrop"
 				onClick={props.onClose}
 			/>
-			<div
-				role="dialog"
+				<dialog
+          ref={dialog}
+          onClick={event => {
+            const box = event.currentTarget.getBoundingClientRect();
+            if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) onClose();
+          }}
+					role="dialog"
 				aria-modal="true"
 				aria-label={props.title}
 				className="adachart-pro__modal"
@@ -107,7 +111,7 @@ function Modal(props: ModalProps) {
 						{props.confirmLabel}
 					</button>
 				</div>
-			</div>
+			</dialog>
 		</>
 	);
 }

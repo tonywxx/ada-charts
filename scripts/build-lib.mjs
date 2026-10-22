@@ -38,7 +38,7 @@ const ENTRIES = {
 };
 
 const ADA_PRO_ENTRY = {
-	"adachart-pro": "src/components/adachart-pro/AdaChartPro.tsx",
+	"adachart-pro": "src/components/adachart-pro/index.ts",
 };
 
 const isReact = (id) => id === "react" || id === "react-dom" || /^react(-dom)?\//.test(id);

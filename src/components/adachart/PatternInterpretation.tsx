@@ -10,9 +10,13 @@ interface Props {
 	timezone: string;
 	isCandleClosed?: (bar: KLineData) => boolean;
 }
-interface Position { signal: PatternSignal; path: string; boundaries: string[]; x: number; y: number }
+interface Arrow { x: number; y: number; up: boolean }
+interface Position { signal: PatternSignal; path: string; boundaries: string[]; arrows: Arrow[]; x: number; y: number; badgeY: number }
 interface Snapshot { signals: PatternSignal[]; data: KLineData[]; positions: Position[]; left: number; top: number; width: number; height: number; symbol: string; period: string; unknown: boolean }
 const EMPTY: Snapshot = { signals: [], data: [], positions: [], left: 0, top: 0, width: 0, height: 0, symbol: "", period: "", unknown: false };
+const HIGH_COLOR = "#df4260", LOW_COLOR = "#079e70";
+const ARROW_WIDTH = 5.5, ARROW_HEIGHT = 4.5, ARROW_GAP = 2;
+const BADGE_RADIUS = 6, BADGE_GAP = 5;
 
 // shortcut: engine-only image exports exclude this DOM layer; composite capture if exports need patterns.
 export function PatternInterpretation({ engine, events, locale, theme, timezone, isCandleClosed = isPatternCandleClosed }: Props) {
@@ -62,10 +66,24 @@ export function PatternInterpretation({ engine, events, locale, theme, timezone,
 				return Array.isArray(point) ? point[0] : point;
 			};
 			const path = (points: PatternSignal["points"]) => points.map(point => { const p = pixel(point.timestamp, point.value); return `${p.x},${p.y}`; }).join(" ");
+			// 拐点标记：局部高点朝上，局部低点朝下；端点只与相邻点比较。
+			const arrows = (points: PatternSignal["points"]) => points.flatMap((point, i) => {
+				const prev = points[i - 1], next = points[i + 1];
+				const up = (!prev || point.value > prev.value) && (!next || point.value > next.value);
+				const down = (!prev || point.value < prev.value) && (!next || point.value < next.value);
+				if (up === down) return [];
+				const p = pixel(point.timestamp, point.value);
+				return p.x === undefined || p.y === undefined || !Number.isFinite(p.x) || !Number.isFinite(p.y) ? [] : [{ x: p.x, y: p.y, up }];
+			});
 			const positions = current.signals.slice(-40).flatMap(signal => {
-				const p = pixel(signal.confirmedAt, signal.price);
+				const bar = current.data[signal.confirmationIndex];
+				// 折线终点与其它折点一致：看涨取确认 K 线最高价，看跌取最低价。
+				const edge = (signal.pattern.direction === 1 ? bar?.high : bar?.low) ?? signal.price;
+				const p = pixel(signal.confirmedAt, edge);
 				if (p.x === undefined || p.y === undefined || !Number.isFinite(p.x) || !Number.isFinite(p.y)) return [];
-				return [{ signal, path: path([...signal.points, { timestamp: signal.confirmedAt, value: signal.price }]), boundaries: signal.boundaries.map(path), x: p.x, y: p.y }];
+				const gap = BADGE_RADIUS + BADGE_GAP;
+				const offset = p.y + (signal.pattern.direction === 1 ? -gap : gap);
+				return [{ signal, path: path([...signal.points, { timestamp: signal.confirmedAt, value: edge }]), boundaries: signal.boundaries.map(path), arrows: arrows(signal.points), x: p.x, y: p.y, badgeY: Math.max(BADGE_RADIUS + 2, Math.min(bounds.height - BADGE_RADIUS - 2, offset)) }];
 			});
 			const period = chart.getPeriod();
 			current = { ...current, positions, left: bounds.left, top: bounds.top, width: bounds.width, height: bounds.height, symbol: chart.getSymbol()?.ticker ?? "", period: period ? `${period.span} ${period.type}` : "" };
@@ -112,11 +130,20 @@ export function PatternInterpretation({ engine, events, locale, theme, timezone,
 		{visible ? <div style={{ position: "absolute", pointerEvents: "none", overflow: "hidden", left: snapshot.left, top: snapshot.top, width: snapshot.width, height: snapshot.height, zIndex: 3 }}>
 			<svg aria-hidden="true" width="100%" height="100%" style={{ position: "absolute", inset: 0 }}>
 				{snapshot.positions.map(p => <g key={p.signal.id}>
-					<polyline points={p.path} stroke="#4c78ef" strokeWidth={2} fill="none" />
+					<polyline points={p.path} stroke="#4c78ef" strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" fill="none" />
 					{p.boundaries.map((boundary, i) => <polyline key={i} points={boundary} stroke={color} opacity={0.45} strokeDasharray="5 4" fill="none" />)}
+					{p.arrows.map((arrow, i) => {
+						const base = arrow.up ? arrow.y - ARROW_GAP : arrow.y + ARROW_GAP, half = ARROW_WIDTH / 2;
+						const points = arrow.up ? `${arrow.x},${base - ARROW_HEIGHT} ${arrow.x + half},${base} ${arrow.x - half},${base}` : `${arrow.x},${base + ARROW_HEIGHT} ${arrow.x - half},${base} ${arrow.x + half},${base}`;
+						const fill = arrow.up ? HIGH_COLOR : LOW_COLOR;
+						return <polygon key={i} points={points} fill={fill} stroke={fill} strokeWidth={0.5} strokeLinejoin="round" />;
+					})}
 				</g>)}
 			</svg>
-			{snapshot.positions.filter(p => p.x >= 0 && p.x <= snapshot.width && p.y >= 0 && p.y <= snapshot.height).map(p => <button key={p.signal.id} type="button" aria-label={`${name(p.signal)} · ${date(p.signal.confirmedAt)}`} title={name(p.signal)} onClick={() => open(p.signal.id)} style={{ position: "absolute", pointerEvents: "auto", left: p.x, top: p.y, transform: "translate(-50%, -50%)", width: 26, height: 26, boxSizing: "border-box", padding: 0, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", border: "2px solid white", background: p.signal.pattern.direction === 1 ? "#079e70" : "#df4260", color: "white", cursor: "pointer", fontSize: 16 }}><svg aria-hidden="true" viewBox="0 0 16 16" style={{ width: 14, height: 14, display: "block", flexShrink: 0 }}><path fill="currentColor" d={p.signal.pattern.direction === 1 ? "M8 2 14 14H2Z" : "M2 2H14L8 14Z"} /></svg></button>)}
+			{snapshot.positions.filter(p => p.x >= 0 && p.x <= snapshot.width && p.badgeY >= 0 && p.badgeY <= snapshot.height).map(p => {
+				const bullish = p.signal.pattern.direction === 1;
+				return <button key={p.signal.id} type="button" aria-label={`${name(p.signal)} · ${date(p.signal.confirmedAt)}`} title={name(p.signal)} onClick={() => open(p.signal.id)} style={{ position: "absolute", pointerEvents: "auto", left: p.x, top: p.badgeY, transform: "translate(-50%, -50%)", width: BADGE_RADIUS * 2, height: BADGE_RADIUS * 2, boxSizing: "border-box", padding: 0, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", border: "1px solid white", background: bullish ? LOW_COLOR : HIGH_COLOR, color: "white", cursor: "pointer", boxShadow: `0 0 0 2px ${bullish ? "rgba(7, 158, 112, 0.28)" : "rgba(223, 66, 96, 0.28)"}` }}><svg aria-hidden="true" viewBox="0 0 16 16" style={{ width: 6, height: 6, display: "block", flexShrink: 0 }}><path fill="currentColor" d={bullish ? "M8 2 14 14H2Z" : "M2 2H14L8 14Z"} /></svg></button>;
+			})}
 		</div> : null}
 		<dialog ref={dialog} onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); event.currentTarget.close(); } }} aria-label={selected ? name(selected) : text("Pattern interpretation", "形态解读")} onClose={() => { setSelectedId(null); (focusBack.current?.isConnected ? focusBack.current : control.current)?.focus(); }} onClick={event => { if (event.target === event.currentTarget) { const bounds = event.currentTarget.getBoundingClientRect(); if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) event.currentTarget.close(); } }} style={{ color, background, border: "1px solid #8886", borderRadius: 12, padding: 24, width: "min(420px, 90vw)", maxHeight: "80vh", overflow: "auto", boxSizing: "border-box", font: "14px/1.6 system-ui, sans-serif" }}>
 			{selected && stats ? <>

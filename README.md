@@ -66,3 +66,13 @@ pnpm lint       # lint (oxlint)
 ## Notes
 
 This repository collects reusable chart/visualization display components for use in AdaQ and other downstream projects.
+
+## Reusing the complete chart
+
+Import `AdaChartPro` from `ada-charts/adachart-pro` and its stylesheet from `ada-charts/adachart-pro.css`. The component owns candle tooltip settings and rendering, chart-type shortcuts, the complete period menu, Reset, manual viewport retention during live updates, drawing tools, indicators, themes and sizing. Use `fill` inside a parent with an explicit height to fill both dimensions.
+
+`onChartReady` supplies `AdaChartProApi`. `getConfiguration(previous?, instrumentKey?)` exports a validated snapshot of indicators, drawing geometry/names, pane heights, viewport, native settings and tooltip preferences. `await setConfiguration(snapshot, instrumentKey?)` restores it after the internal React state commits. `onConfigurationChange` signals that a new snapshot can be saved. Supplying the previous snapshot preserves saved viewport/pane geometry until a pan, zoom, Reset or pane drag explicitly changes it; a snapshot without a previous value reads the complete current geometry. Cancelled restores reject with `AbortError`; consumers may ignore those. The host application owns persistence and the instrument key, which can name any venue.
+
+For OKX consumers with a request budget/cache, `useCandleData` accepts `readPage` and `onSelectionChange`, and returns a stable `loader` plus `observation`. Pass `observation.status` as `dataStatus`, and optionally `onRefresh`, to display transport errors and retries in the chart. Candle validation, history/stream isolation, duplicate/finality checks, shared subscriptions and stale detection stay in this package. A custom `dataLoader` remains supported for other venues. `candleTooltip`, `onCandleTooltipChange`, `theme` and `onThemeChange` connect application preferences without importing an application store.
+
+Run `pnpm test:standalone` for the application-independent StrictMode example and browser regression. New reusable chart features belong here and must work in that example; consuming applications provide business context, transport policy and storage.

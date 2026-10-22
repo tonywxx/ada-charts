@@ -13,7 +13,7 @@ import type {
 import { registerIndicator, registerOverlay } from "klinecharts";
 import * as extensionOverlays from "@klinecharts/extension";
 import { pricePrecisionOf } from "../../price-precision";
-import { LIGHT_THEME } from "../../theme";
+import { DARK_THEME, LIGHT_THEME } from "../../theme";
 import { mergeStyles, themeStyles } from "./adachart-styles";
 import { VOLUME_OVERLAY_INDICATOR } from "./adachart-window-config";
 import type { AdaChartProps, AdaChartResolvedProps } from "./AdaChart";
@@ -263,7 +263,14 @@ export const ADACHART_DEFAULTS = {
  * 把调用方 props 合并到 {@link ADACHART_DEFAULTS} 之上；显式传 `undefined` 的键仍回退到默认值。
  */
 export function resolveAdaChartProps(props: AdaChartProps): AdaChartResolvedProps {
-	const resolved = { ...ADACHART_DEFAULTS } as Record<string, unknown>;
+	const palette = props.theme === "dark" ? DARK_THEME : LIGHT_THEME;
+  const resolved = {
+    ...ADACHART_DEFAULTS,
+    backgroundColor: props.theme === "dark" ? "#292929" : "#ffffff",
+    textColor: palette.axisText,
+    gridColor: palette.gridLine,
+    crosshairColor: palette.crosshair,
+  } as Record<string, unknown>;
 	for (const [key, value] of Object.entries(props)) {
 		if (value !== undefined) resolved[key] = value;
 	}

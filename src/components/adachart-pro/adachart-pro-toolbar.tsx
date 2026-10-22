@@ -79,6 +79,8 @@ function saveImage(url: string): void {
 }
 
 export interface AdaChartProToolbarProps {
+  extraControls?: import("react").ReactNode;
+  onRefresh?: () => void;
 	theme: "light" | "dark";
 	locale: string;
 	/** Bar sizes on offer. 提供的周期档位。 */
@@ -222,6 +224,7 @@ export function AdaChartProToolbar(props: AdaChartProToolbarProps) {
 
 	return (
 		<div ref={rootRef} className="adachart-pro__toolbar">
+        {props.onRefresh ? <button type="button" className="adachart-pro__button" onClick={props.onRefresh}>{locale.startsWith('zh') ? '刷新 K 线' : 'Refresh candles'}</button> : null}
 			{/* The drawing-bar toggle leads the strip: the bar it controls hangs off the
 			 * left edge, directly below. `aria-pressed` reports the bar's visibility so
 			 * the control is a toggle to assistive tech, not a mystery button.
@@ -334,6 +337,7 @@ export function AdaChartProToolbar(props: AdaChartProToolbarProps) {
 			)}
 
 			<div className="adachart-pro__group">
+          {props.extraControls}
 				{props.periods.map((option) => (
 					<button
 						key={periodLabel(option)}

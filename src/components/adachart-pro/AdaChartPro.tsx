@@ -9,7 +9,7 @@ import type {
 	SymbolInfo,
 } from "klinecharts";
 import type { Dispatch, ReactNode, SetStateAction } from "react";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { DARK_THEME, LIGHT_THEME } from "../../theme";
 import { AdaChart, type AdaChartIndicator, type AdaChartProps } from "../adachart/AdaChart";
 import "./adachart-pro.css";
@@ -49,6 +49,13 @@ import {
 	type AdaChartProSettings,
 } from "./adachart-pro-settings";
 import { AdaChartProToolbar } from "./adachart-pro-toolbar";
+import { ChartQuoteTooltip, ChartTooltipSettings } from './ChartQuoteTooltip';
+import { ChartToolbar } from './ChartToolbar';
+import { candleTooltipSchema, defaultCandleTooltip, type CandleTooltipSettings } from './candle-tooltip-settings';
+import { chartProSettingsSchema, defaultChartProSettings, type ChartProSettings } from './chart-config';
+import { captureChart, indicatorPane, restoreDrawings } from './chart-native';
+import { nativePeriods, type PublicMarketStatus } from './public-candles';
+
 
 /**
  * Everything `AdaChartPro` accepts. Each prop is either a `klinecharts` v10
@@ -59,6 +66,16 @@ import { AdaChartProToolbar } from "./adachart-pro-toolbar";
  * （`symbol`、`period`、`dataLoader`），要么是工具栏所驱动的 Pro 外围部件。
  */
 export interface AdaChartProProps {
+  /** Fill both dimensions of a sized parent. */
+  fill?: boolean;
+  /** Optional transport status from a custom data source. */
+  dataStatus?: PublicMarketStatus;
+  onRefresh?: () => void;
+  candleTooltip?: CandleTooltipSettings;
+  onCandleTooltipChange?: (settings: CandleTooltipSettings) => void;
+  onConfigurationChange?: () => void;
+  onThemeChange?: (theme: 'light' | 'dark') => void;
+
 	/** Shared AdaChart price-pattern feature. */
 	patternInterpretation?: boolean;
 	isCandleClosed?: AdaChartProps["isCandleClosed"];
@@ -203,6 +220,10 @@ export interface AdaChartProNativeSettings {
  * 命令式接口：工具栏已经在做的那些事，以同一套 v10 词汇对外开放。
  */
 export interface AdaChartProApi {
+  getConfiguration(previous?: ChartProSettings, instrument?: string): ChartProSettings;
+  setConfiguration(settings: ChartProSettings, instrument?: string): Promise<void>;
+  resetView(): void;
+
 	getNativeSettings(): AdaChartProNativeSettings;
 	setNativeSettings(settings: AdaChartProNativeSettings): void;
 	/** The raw `klinecharts` instance, for everything not surfaced here. 原始 `klinecharts` 实例，用于此处未暴露的一切。 */
@@ -378,6 +399,17 @@ function observedLoaderFor(
 function AdaChartPro(props: AdaChartProProps) {
 	const resolved = useMemo(() => resolveAdaChartProProps(props), [props]);
 	const onNativeSettingsChange = props.onNativeSettingsChange;
+  const onConfigurationChange = props.onConfigurationChange, onThemeChange = props.onThemeChange;
+  const [quoteChart, setQuoteChart] = useState<Chart | null>(null);
+  const [candleTooltip, setCandleTooltip] = useSteered(props.candleTooltip, props.candleTooltip ?? defaultCandleTooltip);
+  const [manualView, setManualView] = useState(false);
+  const manualViewRef = useRef(false), changingView = useRef(false);
+  const captureView = useRef(false), capturePanes = useRef(false);
+  const [viewSettings, setViewSettings] = useState(defaultChartProSettings.view);
+  const [plotHeight, setPlotHeight] = useState(resolved.height);
+  const [configuration, setConfiguration] = useState<{ settings: ChartProSettings, instrument: string, resolve: () => void, reject: (error: Error) => void } | null>(null);
+  const pendingConfiguration = useRef<typeof configuration>(null);
+
 
 	// The nine values a caller can also steer through props. Each is seeded from
 	// the resolved props and then handed to `useSteered`, which is what makes a
@@ -667,7 +699,19 @@ function AdaChartPro(props: AdaChartProProps) {
 	// 看不穿 `observedLoaderFor`，会把它读成渲染期取值，因此在这里抑制。
 	// oxlint-disable-next-line react/refs
 	const [observedLoader] = useState<DataLoader>(() =>
-		observedLoaderFor(() => loaderRef.current, setDataState),
+		observedLoaderFor(() => ({
+      getBars: params => loaderRef.current.getBars(params),
+      subscribeBar: params => loaderRef.current.subscribeBar?.({ ...params, callback: bar => {
+        const chart = chartRef.current;
+        const right = manualViewRef.current ? chart?.getVisibleRange().realTo : undefined;
+        params.callback(bar);
+        if (chart && right !== undefined) {
+          const drift = chart.getVisibleRange().realTo - right;
+          if (drift) { changingView.current = true; try { chart.scrollByDistance(drift * chart.getBarSpace().bar); } finally { changingView.current = false; } }
+        }
+      } }),
+      unsubscribeBar: params => loaderRef.current.unsubscribeBar?.(params),
+    }), setDataState),
 	);
 
 	/**
@@ -781,6 +825,7 @@ function AdaChartPro(props: AdaChartProProps) {
 	 * 本次渲染下的取值，供命令式 API 读取 —— 后者必须在图表的整个生命周期里保持同一个引用。
 	 */
 	const stateRef = useRef({
+    candleTooltip, viewSettings,
 		nativeSettings,
 		props,
 		resolved,
@@ -793,6 +838,7 @@ function AdaChartPro(props: AdaChartProProps) {
 	});
 	useEffect(() => {
 		stateRef.current = {
+      candleTooltip, viewSettings,
 			nativeSettings,
 			props,
 			resolved,
@@ -859,9 +905,15 @@ function AdaChartPro(props: AdaChartProProps) {
 		() =>
 			mergeAdaChartProStyles(
 				indicatorTooltipStyles(theme),
-				styleOverrides,
-			),
-		[theme, styleOverrides],
+        { candle: { area: { backgroundColor: 'transparent' }, tooltip: { showRule: 'none' } },
+          xAxis: { tickText: { color: theme === 'dark' ? '#b2b5be' : '#677489' } },
+          yAxis: { tickText: { color: theme === 'dark' ? '#b2b5be' : '#677489' } },
+          grid: { horizontal: { color: theme === 'dark' ? '#3c3c3c' : 'rgba(197, 203, 206, 0.5)', style: 'solid', size: 1 }, vertical: { color: theme === 'dark' ? '#343434' : 'rgba(197, 203, 206, 0.5)', style: 'solid', size: 1 } },
+          crosshair: { horizontal: { line: { color: theme === 'dark' ? '#dedede' : '#758696' } }, vertical: { line: { color: theme === 'dark' ? '#dedede' : '#758696' } } } },
+        { crosshair: { show: viewSettings.showCrosshair } },
+        styleOverrides,
+      ),
+		[theme, styleOverrides, viewSettings.showCrosshair],
 	);
 
 	/**
@@ -904,7 +956,53 @@ function AdaChartPro(props: AdaChartProProps) {
 	 */
 	const api = useMemo<AdaChartProApi>(
 		() => ({
-			getNativeSettings: () => structuredClone(stateRef.current.nativeSettings),
+			getConfiguration: (previous, instrument = stateRef.current.symbol.ticker) => {
+        const chart = chartRef.current;
+        const saved = previous ?? defaultChartProSettings;
+        if (!chart) throw new Error('Chart is not ready');
+        const owned = captureChart(chart, saved, instrument, !previous || captureView.current, !previous || capturePanes.current);
+        const { overlayNames, ...native } = stateRef.current.nativeSettings;
+        const names = Object.fromEntries((owned.drawings[instrument] ?? []).flatMap(drawing => overlayNames[drawing.id] ? [[drawing.id, overlayNames[drawing.id]]] : []));
+        const result = chartProSettingsSchema.parse({ ...saved, ...owned, period: Object.entries(nativePeriods).find(([, value]) => value.type === stateRef.current.period.type && value.span === stateRef.current.period.span)?.[0] ?? saved.period, view: { ...owned.view, showGrid: chart.getStyles().grid.show, showCrosshair: chart.getStyles().crosshair.show, showPriceMark: chart.getStyles().candle.priceMark.show, yAxisPosition: stateRef.current.viewSettings.yAxisPosition, scrollEnabled: chart.isScrollEnabled(), zoomEnabled: chart.isZoomEnabled(), reverseAxis: stateRef.current.nativeSettings.reverseAxis, timezone: stateRef.current.timezone }, candleTooltip: stateRef.current.candleTooltip, native, drawingNames: { ...saved.drawingNames, [instrument]: names } });
+        captureView.current = false; capturePanes.current = false;
+        return result;
+      },
+      setConfiguration: (input, instrument = stateRef.current.symbol.ticker) => {
+        const settings = chartProSettingsSchema.parse(input);
+        pendingConfiguration.current?.reject(new DOMException('Configuration restore superseded', 'AbortError'));
+        return new Promise<void>((resolve, reject) => {
+          const request = { settings, instrument, resolve, reject };
+          pendingConfiguration.current = request;
+          setConfiguration(request);
+          setMainIndicators(settings.indicators.filter(value => indicatorPane(value.name) === 'candle_pane').map(value => value.name));
+          setSubIndicators(settings.indicators.filter(value => indicatorPane(value.name) !== 'candle_pane').map(value => value.name));
+          setReverseAxis(settings.native.reverseAxis);
+          setDrawingEnabled(settings.native.drawingEnabled);
+          setDrawingBarVisible(settings.native.drawingBarVisible);
+          setOverlayMode(settings.native.overlayMode);
+          setOverlayMagnet(settings.native.overlayMagnet);
+          setOverlayLocked(settings.native.overlayLocked);
+          setOverlayVisible(settings.native.overlayVisible);
+          replaceDrawingNames({ ...settings.drawingNames[instrument] });
+          setApiStyles(structuredClone(settings.native.styleOverrides));
+          setSettingsPatch(null);
+          setPeriod(nativePeriods[settings.period]);
+          setTimezone(settings.view.timezone);
+          setViewSettings(settings.view);
+          if (settings.candleTooltip) setCandleTooltip(settings.candleTooltip);
+        });
+      },
+      resetView: () => {
+        const chart = chartRef.current;
+        if (!chart) return;
+        changingView.current = true;
+        try { chart.setBarSpace(6); chart.setOffsetRightDistance(10); chart.scrollToRealTime(); }
+        finally { changingView.current = false; }
+        manualViewRef.current = false; setManualView(false);
+        captureView.current = true;
+        stateRef.current.props.onConfigurationChange?.();
+      },
+      getNativeSettings: () => structuredClone(stateRef.current.nativeSettings),
 			setNativeSettings: (settings) => {
 				setReverseAxis(settings.reverseAxis);
 				setDrawingEnabled(settings.drawingEnabled);
@@ -957,12 +1055,14 @@ function AdaChartPro(props: AdaChartProProps) {
 			setDrawingEnabled,
 			setDrawingBarVisible,
 			replaceDrawingNames,
+      setCandleTooltip,
 		],
 	);
 
 	const handleChartReady = useCallback(
 		(chart: Chart) => {
 			chartRef.current = chart;
+      setQuoteChart(chart);
 			setReady(true);
 			stateRef.current.props.onChartReady?.(api);
 		},
@@ -1253,21 +1353,97 @@ function AdaChartPro(props: AdaChartProProps) {
 
 	const closeScreenshot = useCallback(() => setScreenshot(null), []);
 
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    if (!props.fill || !root) return;
+    const measure = () => setPlotHeight(Math.max(180, root.clientHeight - (root.querySelector('.adachart-pro__toolbar')?.getBoundingClientRect().height ?? 0)));
+    const observer = new ResizeObserver(measure);
+    observer.observe(root);
+    const toolbar = root.querySelector('.adachart-pro__toolbar');
+    if (toolbar) observer.observe(toolbar);
+    measure();
+    return () => observer.disconnect();
+  }, [props.fill]);
+  useEffect(() => {
+    if (!ready) return;
+    chartRef.current?.setScrollEnabled(viewSettings.scrollEnabled);
+    chartRef.current?.setZoomEnabled(viewSettings.zoomEnabled);
+    onConfigurationChange?.();
+  }, [ready, viewSettings, onConfigurationChange]);
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!ready || !chart) return;
+    const viewChanged = () => {
+      if (changingView.current || pendingConfiguration.current) return;
+      manualViewRef.current = true; setManualView(true);
+      captureView.current = true;
+      stateRef.current.props.onConfigurationChange?.();
+    };
+    const changed = () => { if (!pendingConfiguration.current) { capturePanes.current = true; stateRef.current.props.onConfigurationChange?.(); } };
+    chart.subscribeAction('onZoom', viewChanged); chart.subscribeAction('onScroll', viewChanged); chart.subscribeAction('onPaneDrag', changed);
+    return () => { chart.unsubscribeAction('onZoom', viewChanged); chart.unsubscribeAction('onScroll', viewChanged); chart.unsubscribeAction('onPaneDrag', changed); };
+  }, [ready]);
+  useEffect(() => {
+    if (!configuration || !ready) return;
+    const frame = requestAnimationFrame(() => {
+      if (pendingConfiguration.current !== configuration) return;
+      const chart = chartRef.current;
+      if (!chart) return;
+      try {
+        const { settings, instrument } = configuration;
+        for (const indicator of settings.indicators) {
+          const current = chart.getIndicators().find(value => value.name === indicator.name);
+          if (current) {
+            chart.overrideIndicator({ id: current.id, name: indicator.name, calcParams: indicator.calcParams, visible: indicator.visible, ...(indicator.styles ? { styles: indicator.styles } : {}) });
+            if (indicator.paneHeight) chart.setPaneOptions({ id: current.paneId, height: indicator.paneHeight });
+          }
+        }
+        restoreDrawings(chart, settings, instrument, () => stateRef.current.props.onConfigurationChange?.());
+        chart.setBarSpace(settings.view.barSpace); chart.setOffsetRightDistance(settings.view.offsetRightDistance);
+        manualViewRef.current = settings.view.offsetRightDistance !== 10 || settings.view.barSpace !== 6;
+        setManualView(manualViewRef.current);
+        refreshDrawings();
+        pendingConfiguration.current = null;
+        captureView.current = false; capturePanes.current = false;
+        configuration.resolve();
+      } catch (error) { pendingConfiguration.current = null; configuration.reject(error instanceof Error ? error : new Error(String(error))); }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [configuration, ready, refreshDrawings]);
+  const mounted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      // StrictMode reconnects effects synchronously; only cancel an actual unmount.
+      queueMicrotask(() => { if (!mounted.current) pendingConfiguration.current?.reject(new DOMException('Chart unmounted', 'AbortError')); });
+    };
+  }, []);
+  const indicatorSelection = JSON.stringify([mainIndicators, subIndicators]);
+  useEffect(() => { onConfigurationChange?.(); }, [nativeSettings, timezone, indicatorSelection, candleTooltip.position, candleTooltip.transparency, onConfigurationChange]);
+  useEffect(() => { onThemeChange?.(theme); }, [theme, onThemeChange]);
+
 	const tokens = theme === "dark" ? DARK_THEME : LIGHT_THEME;
 
 	return (
 		<div
 			ref={rootRef}
 			className="adachart-pro"
+        data-fill={props.fill || undefined}
+        onPointerUp={() => stateRef.current.props.onConfigurationChange?.()}
+        onKeyUp={() => stateRef.current.props.onConfigurationChange?.()}
 			data-theme={theme}
 			data-adachart-pro-ready={ready ? "true" : undefined}
 			style={{
 				width: resolved.autoSize ? "100%" : resolved.width,
-				fontFamily: tokens.fontFamily,
+				height: props.fill ? "100%" : undefined,
+        fontFamily: tokens.fontFamily,
 				fontSize: tokens.fontSize,
 			}}
 		>
 			<AdaChartProToolbar
+        onRefresh={() => props.onRefresh ? props.onRefresh() : chartRef.current?.resetData()}
+        extraControls={<ChartToolbar locale={locale} period={Object.entries(nativePeriods).find(([, value]) => value.type === period.type && value.span === period.span)?.[0] as keyof typeof nativePeriods | undefined ?? '1Dutc'} candleType={styles.candle?.type ?? 'candle_solid'} onPeriodChange={value => setPeriod(nativePeriods[value])} onTypeChange={type => setApiStyles(current => mergeAdaChartProStyles(current ?? {}, { candle: { type } }))} manualView={manualView} onReset={() => api.resetView()} />}
 				theme={theme}
 				locale={locale}
 				periods={resolved.periods}
@@ -1317,6 +1493,8 @@ function AdaChartPro(props: AdaChartProProps) {
 					/>
 				) : null}
 				<div className="adachart-pro__body">
+          {props.dataStatus && props.dataStatus !== 'ready' && props.dataStatus !== 'loading' && props.dataStatus !== 'empty' ? <div className="adachart-pro__data-status" role="status">{locale.startsWith('zh') ? '行情状态' : 'Candles'}: {props.dataStatus}<button type="button" onClick={() => props.onRefresh ? props.onRefresh() : chartRef.current?.resetData()}>{locale.startsWith('zh') ? '重试' : 'Retry'}</button></div> : null}
+          {ready && quoteChart ? <ChartQuoteTooltip chart={quoteChart} period={Object.entries(nativePeriods).find(([, value]) => value.type === period.type && value.span === period.span)?.[0] ?? `${period.span}${period.type}`} timezone={timezone} locale={locale} settings={candleTooltip} /> : null}
 					{resolved.watermark ? (
 						<div className="adachart-pro__watermark">{resolved.watermark}</div>
 					) : null}
@@ -1345,7 +1523,8 @@ function AdaChartPro(props: AdaChartProProps) {
 								symbol={symbol}
 								period={period}
 								width={resolved.width}
-								height={resolved.height}
+								height={props.fill ? plotHeight : resolved.height}
+                yAxisPosition={viewSettings.yAxisPosition}
 								autoSize={resolved.autoSize}
 								// `transparent`, not the surface colour: anything `AdaChart`
 								// paints is inside `.adachart-pro__chart` and would sit above
@@ -1451,7 +1630,10 @@ function AdaChartPro(props: AdaChartProProps) {
 				<AdaChartProSettingsDialog
 					locale={locale}
 					settings={settings}
-					extraControls={props.settingsContent}
+					extraControls={<>
+            {(['showCrosshair', 'scrollEnabled', 'zoomEnabled'] as const).map(name => <label className="adachart-pro__field" key={name}><span className="adachart-pro__field-label">{({ showCrosshair: locale.startsWith('zh') ? '显示十字光标' : 'Show crosshair', scrollEnabled: locale.startsWith('zh') ? '允许平移' : 'Enable pan', zoomEnabled: locale.startsWith('zh') ? '允许缩放' : 'Enable zoom' })[name]}</span><input type="checkbox" checked={viewSettings[name]} onChange={event => setViewSettings(current => ({ ...current, [name]: event.target.checked }))} /></label>)}
+            <label className="adachart-pro__field"><span className="adachart-pro__field-label">{locale.startsWith('zh') ? '价格轴' : 'Price axis'}</span><select aria-label={locale.startsWith('zh') ? '价格轴' : 'Price axis'} className="adachart-pro__select" value={viewSettings.yAxisPosition} onChange={event => { const position = event.target.value; if (position === 'left' || position === 'right') setViewSettings(current => ({ ...current, yAxisPosition: position })); }}><option value="left">{locale.startsWith('zh') ? '左侧' : 'Left'}</option><option value="right">{locale.startsWith('zh') ? '右侧' : 'Right'}</option></select></label>
+            <ChartTooltipSettings locale={locale} settings={candleTooltip} onChange={value => { const settings = candleTooltipSchema.parse(value); setCandleTooltip(settings); props.onCandleTooltipChange?.(settings); }} />{props.settingsContent}</>}
 					reverseAxis={reverseAxis}
 					drawing={drawingEnabled}
 					onChange={handleSettingsChange}
