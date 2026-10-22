@@ -20,12 +20,6 @@ importers:
       klinecharts-v9:
         specifier: npm:klinecharts@^9.8.10
         version: klinecharts@9.8.12
-      lightweight-charts:
-        specifier: ^5.2.1
-        version: 5.2.1
-      lightweight-charts-drawing:
-        specifier: ^0.1.1
-        version: 0.1.1(lightweight-charts@5.2.1)
       react:
         specifier: ^19.2.8
         version: 19.3.0
@@ -1247,9 +1241,6 @@ packages:
     resolution: {integrity: sha512-KfYbmpRm0VbLjEvVa9yGwCi9GI34xvi7A/HXYWQO65CSD2u3MczUJSuwXKFIxlGsgBQizV9q5J9NHj4VG0n+pA==}
     engines: {node: '>=12.0.0'}
 
-  fancy-canvas@2.1.0:
-    resolution: {integrity: sha512-nifxXJ95JNLFR2NgRV4/MxVP45G9909wJTEKz5fg/TZS20JJZA6hfgRVh/bC9bwl2zBtBNcYPjiBE4njQHVBwQ==}
-
   fdir@6.5.0:
     resolution: {integrity: sha512-tIbYtZbucOs0BRGqPJkshJUYdL+SDH7dVM8gjy+ERp3WAUjLEFJE+02kanyHtwjWOnwrKYBiwAmM0p4kLJAnXg==}
     engines: {node: '>=12.0.0'}
@@ -1406,14 +1397,6 @@ packages:
   lightningcss@1.33.0:
     resolution: {integrity: sha512-WkUDrojuJs0xkgGf2udWxa3yGBRxPtxUkB79i6aCZLRgc7PM8fZe9TosfPDcvEpQZbuFASnHYmRLBLUbmLOIIA==}
     engines: {node: '>= 12.0.0'}
-
-  lightweight-charts-drawing@0.1.1:
-    resolution: {integrity: sha512-lS5s94QnMA6mkXAbOCdLdux1rgzdlJn5vIxQSBNj+1pFtuMHaAlV+ciElSI0wNTzLNM1LQo8JN7j83GpApTcgQ==}
-    peerDependencies:
-      lightweight-charts: ^5.0.0
-
-  lightweight-charts@5.2.1:
-    resolution: {integrity: sha512-IVwoK1RLFiLPubaKIjNbtjWLnpPMqiABSrTay6whmNa8L1+19292VtHJ+BWyPUuLCwF0tcQlhEWd1CLB2a1nsQ==}
 
   lodash@4.18.1:
     resolution: {integrity: sha512-dMInicTPVE8d1e5otfwmmjlxkZoUpiVLwyeTdUsi/Caj/gfzzblBcCE5sRHV/AsjuCmxWrte2TNGSYuCeCq+0Q==}
@@ -2770,8 +2753,6 @@ snapshots:
 
   expect-type@1.4.0: {}
 
-  fancy-canvas@2.1.0: {}
-
   fdir@6.5.0(picomatch@4.0.7):
     optionalDependencies:
       picomatch: 4.0.7
@@ -2875,15 +2856,6 @@ snapshots:
       lightningcss-linux-x64-musl: 1.33.0
       lightningcss-win32-arm64-msvc: 1.33.0
       lightningcss-win32-x64-msvc: 1.33.0
-
-  lightweight-charts-drawing@0.1.1(lightweight-charts@5.2.1):
-    dependencies:
-      fancy-canvas: 2.1.0
-      lightweight-charts: 5.2.1
-
-  lightweight-charts@5.2.1:
-    dependencies:
-      fancy-canvas: 2.1.0
 
   lodash@4.18.1: {}
 

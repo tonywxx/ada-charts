@@ -329,7 +329,8 @@ export function sameKLineData(a: KLineData, b: KLineData): boolean {
 		a.low === b.low &&
 		a.close === b.close &&
 		a.volume === b.volume &&
-		a.turnover === b.turnover
+		a.turnover === b.turnover &&
+		a.closed === b.closed
 	);
 }
 

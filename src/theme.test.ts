@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { TCHART_DEFAULTS } from "./components/lightweight-charts/t-chart-options";
 import { mergeStyles, themeStyles } from "./components/adachart/adachart-styles";
 import { DARK_THEME, LIGHT_THEME, withAlpha } from "./theme";
 
@@ -29,24 +28,6 @@ describe("withAlpha", () => {
 });
 
 describe("Theme tokens", () => {
-	it("keeps one green and one red across every part that colours by direction", () => {
-		// The defect this module exists to make unrepresentable: candles painted
-		// #26a69a while the volume pane below them painted #34d399.
-		// 这个模块要让「无法表达」的缺陷：蜡烛是 #26a69a，下方的成交量却是 #34d399。
-		const up = [
-			TCHART_DEFAULTS.upColor,
-			TCHART_DEFAULTS.wickUpColor,
-			TCHART_DEFAULTS.volumeUpColor,
-		];
-		const down = [
-			TCHART_DEFAULTS.downColor,
-			TCHART_DEFAULTS.wickDownColor,
-			TCHART_DEFAULTS.volumeDownColor,
-		];
-		expect(new Set(up)).toEqual(new Set([LIGHT_THEME.trendUp]));
-		expect(new Set(down)).toEqual(new Set([LIGHT_THEME.trendDown]));
-	});
-
 	it("drives klinecharts from the same tokens, in both directions", () => {
 		const light = themeStyles("light");
 		const dark = themeStyles("dark");

@@ -26,7 +26,7 @@ import {
 	type ZoomAnchor,
 	type ZoomAnchorType,
 } from "klinecharts";
-import { memo, useEffect, useMemo, useRef } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { decideDataPatch } from "../../data-patch";
 import { useEngineMount } from "../../engine-mount";
 import {
@@ -44,6 +44,10 @@ import {
 	sameKLineData,
 	structuralKey,
 } from "./adachart-options";
+import { PatternInterpretation } from "./PatternInterpretation";
+import { observePatternData } from "./pattern-data";
+
+export type { PatternSignal, PatternDefinition } from "./patterns";
 import { createFrameBarQueue } from "./adachart-stream";
 import { VOLUME_OVERLAY_INDICATOR } from "./adachart-window-config";
 
@@ -288,6 +292,10 @@ export interface AdaChartProps
 	 * 顺序不限：展示前会归一化、按时间戳去重并升序排序。
 	 */
 	data?: KLineData[];
+	/** Automatic price-pattern recognition, signal markers and historical outcomes. */
+	patternInterpretation?: boolean;
+	/** Sources must mark closed candles; defaults to `bar.closed === true`. */
+	isCandleClosed?: (bar: KLineData) => boolean;
 	/**
 	 * Advanced: supply your own {@link DataLoader} (history paging, WebSocket
 	 * streaming). When present it wins over {@link AdaChartProps.data}.
@@ -483,6 +491,7 @@ function AdaChart(props: AdaChartProps) {
 
 	/** Latest dataset, read synchronously by the {@link DataLoader} on `init`. */
 	const dataRef = useRef<KLineData[]>(data);
+	const [patternEvents] = useState(() => new EventTarget());
 	const pushQueue = useMemo(() => createFrameBarQueue(), []);
 	// ponytail: distinct bars still recalc full history until klinecharts supports incremental indicators.
 	/** Ids of indicators/overlays the reconcile effects currently own. */
@@ -528,7 +537,7 @@ function AdaChart(props: AdaChartProps) {
 				onSubscribe: pushQueue.setPush,
 				onUnsubscribe: pushQueue.clear,
 			});
-			chart.setDataLoader(
+			chart.setDataLoader(observePatternData(
 				external
 					? {
 							getBars: (params) => external.getBars(params),
@@ -544,8 +553,8 @@ function AdaChart(props: AdaChartProps) {
 								return external.unsubscribeBar?.(params);
 							},
 						}
-					: memory,
-			);
+					: memory, patternEvents, () => latestRef.current.props.patternInterpretation === true,
+			));
 			// symbol + period are what let the loader's init request fire at all.
 			// symbol 与 period 是 loader 的 init 请求得以触发的前提。
 			chart.setSymbol(resolveSymbolInfo(latestRef.current.resolved));
@@ -766,14 +775,16 @@ function AdaChart(props: AdaChartProps) {
 
 	return (
 		<div
-			ref={setContainer}
 			style={{
 				width: resolved.autoSize ? "100%" : resolved.width,
 				height: resolved.height,
 				position: "relative",
 				background: resolved.backgroundColor,
 			}}
-		/>
+		>
+			<div ref={setContainer} style={{ width: "100%", height: "100%" }} />
+			{props.patternInterpretation ? <PatternInterpretation engine={engine} events={patternEvents} locale={resolved.locale} theme={resolved.theme} timezone={resolved.timezone} isCandleClosed={props.isCandleClosed} /> : null}
+		</div>
 	);
 }
 

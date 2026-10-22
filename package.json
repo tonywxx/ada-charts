@@ -12,7 +12,6 @@
 		"test:storybook": "vitest run --project storybook",
 		"test:watch": "vitest",
 		"preview": "vite preview",
-		"perf": "node scripts/bench-charts.mjs",
 		"okx:sample": "node scripts/fetch-okx-sample.mjs",
 		"storybook": "storybook dev -p 6006",
 		"build-storybook": "storybook build"
@@ -22,8 +21,6 @@
 		"@klinecharts/pro": "^0.1.1",
 		"klinecharts": "^10.0.3",
 		"klinecharts-v9": "npm:klinecharts@^9.8.10",
-		"lightweight-charts": "^5.2.1",
-		"lightweight-charts-drawing": "^0.1.1",
 		"react": "^19.2.8",
 		"react-dom": "^19.2.8"
 	},
@@ -46,27 +43,14 @@
 		"vitest": "latest"
 	},
 	"exports": {
-		"./t-chart": {
-			"types": "./dist/components/lightweight-charts/TChart.d.ts",
-			"import": "./dist/t-chart.js"
-		},
 		"./adachart": {
 			"types": "./dist/components/adachart/AdaChart.d.ts",
 			"import": "./dist/adachart.js"
-		},
-		"./k-chart-pro": {
-			"types": "./dist/components/klinecharts-pro/KChartPro.d.ts",
-			"import": "./dist/k-chart-pro.js"
-		},
-		"./t-chart-pro": {
-			"types": "./dist/components/lightweight-charts-pro/TChartPro.d.ts",
-			"import": "./dist/t-chart-pro.js"
 		},
 		"./adachart-pro": {
 			"types": "./dist/components/adachart-pro/AdaChartPro.d.ts",
 			"import": "./dist/adachart-pro.js"
 		},
-		"./k-chart-pro.css": "./dist/ada-charts.css",
 		"./adachart-pro.css": "./dist/adachart-pro.css"
 	},
 	"files": [
@@ -74,7 +58,6 @@
 	],
 	"peerDependencies": {
 		"klinecharts": "^10.0.3",
-		"lightweight-charts": "^5.2.1",
 		"react": "^19.2.8",
 		"react-dom": "^19.2.8"
 	}

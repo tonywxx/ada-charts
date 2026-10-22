@@ -13,7 +13,7 @@ import type {
 import type { Dispatch, ReactNode, SetStateAction } from "react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DARK_THEME, LIGHT_THEME } from "../../theme";
-import { AdaChart, type AdaChartIndicator } from "../adachart/AdaChart";
+import { AdaChart, type AdaChartIndicator, type AdaChartProps } from "../adachart/AdaChart";
 import "./adachart-pro.css";
 import {
 	OkxDataLoader,
@@ -69,6 +69,9 @@ import { AdaChartProToolbar } from "./adachart-pro-toolbar";
  * （`symbol`、`period`、`dataLoader`），要么是工具栏所驱动的 Pro 外围部件。
  */
 export interface AdaChartProProps {
+	/** Shared AdaChart price-pattern feature. */
+	patternInterpretation?: boolean;
+	isCandleClosed?: AdaChartProps["isCandleClosed"];
 	/** Additional consumer controls in the native settings dialog. */
 	settingsContent?: ReactNode;
 	/**
@@ -1603,6 +1606,8 @@ function AdaChartPro(props: AdaChartProProps) {
 								// 传包装器而非原始 loader：`AdaChart` 只在挂载时装一次 loader、
 								// 此后再不更换，因此交给它的对象必须在图表一生中保持同一引用 ——
 								// 见 `observedLoader`。
+								patternInterpretation={props.patternInterpretation}
+								isCandleClosed={props.isCandleClosed}
 								dataLoader={observedLoader}
 								symbol={symbol}
 								period={period}

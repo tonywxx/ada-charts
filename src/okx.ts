@@ -24,6 +24,8 @@ export const OKX_REQUEST_TIMEOUT_MS = 8_000;
 
 /** One Candle in engine-neutral shape: milliseconds since the epoch, all fields finite. 引擎无关的一根 K 线：毫秒时间戳，各字段均为有限值。 */
 export interface OkxCandle {
+	/** Venue finality, absent when the source does not provide it. */
+	closed?: boolean;
 	timestamp: number;
 	open: number;
 	high: number;
@@ -58,6 +60,7 @@ export function parseOkxRows(rows: readonly string[][]): OkxCandle[] {
 				close: num(close),
 				volume: num(volume),
 				turnover: num(turnover),
+				...(row[8] === "0" || row[8] === "1" ? { closed: row[8] === "1" } : {}),
 			};
 		})
 		// A row with a non-finite time or close would be drawn as an invisible
