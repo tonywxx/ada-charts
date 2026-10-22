@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Meta, StoryObj } from "@storybook/react-vite";
 import type { CSSProperties } from "react";
 import { useEffect, useState } from "react";
 import type { DataLoader, KLineData, Period } from "klinecharts";

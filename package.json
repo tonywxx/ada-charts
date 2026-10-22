@@ -1,64 +1,63 @@
 {
-	"name": "ada-charts",
-	"private": true,
-	"version": "0.1.0",
-	"type": "module",
-	"scripts": {
-		"dev": "vite",
-		"build": "tsc -b && node scripts/build-lib.mjs && tsc -p tsconfig.build.json",
-		"lint": "oxlint",
-		"test": "vitest run --project unit",
-		"test:unit": "vitest run --project unit",
-		"test:storybook": "vitest run --project storybook",
-		"test:watch": "vitest",
-		"preview": "vite preview",
-		"okx:sample": "node scripts/fetch-okx-sample.mjs",
-		"storybook": "storybook dev -p 6006",
-		"build-storybook": "storybook build"
-	},
-	"dependencies": {
-		"@klinecharts/extension": "^0.1.0",
-		"@klinecharts/pro": "^0.1.1",
-		"klinecharts": "^10.0.3",
-		"klinecharts-v9": "npm:klinecharts@^9.8.10",
-		"react": "^19.2.8",
-		"react-dom": "^19.2.8"
-	},
-	"devDependencies": {
-		"@storybook/addon-docs": "^10.6.0",
-		"@storybook/addon-vitest": "^10.6.0",
-		"@storybook/react": "^10.6.0",
-		"@storybook/react-vite": "^10.6.0",
-		"@types/node": "^24.13.3",
-		"@types/react": "^19.2.18",
-		"@types/react-dom": "^19.2.7",
-		"@vitejs/plugin-react": "^6.1.1",
-		"@vitest/browser-playwright": "latest",
-		"@vitest/coverage-v8": "latest",
-		"oxlint": "^1.81.0",
-		"playwright": "latest",
-		"storybook": "^10.6.0",
-		"typescript": "~6.0.2",
-		"vite": "^8.3.0",
-		"vitest": "latest"
-	},
-	"exports": {
-		"./adachart": {
-			"types": "./dist/components/adachart/AdaChart.d.ts",
-			"import": "./dist/adachart.js"
-		},
-		"./adachart-pro": {
-			"types": "./dist/components/adachart-pro/AdaChartPro.d.ts",
-			"import": "./dist/adachart-pro.js"
-		},
-		"./adachart-pro.css": "./dist/adachart-pro.css"
-	},
-	"files": [
-		"dist"
-	],
-	"peerDependencies": {
-		"klinecharts": "^10.0.3",
-		"react": "^19.2.8",
-		"react-dom": "^19.2.8"
-	}
+  "name": "ada-charts",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && node scripts/build-lib.mjs && tsc -p tsconfig.build.json",
+    "lint": "oxlint",
+    "test": "vitest run --project unit",
+    "test:unit": "vitest run --project unit",
+    "test:storybook": "vitest run --project storybook",
+    "test:watch": "vitest",
+    "preview": "vite preview",
+    "okx:sample": "node scripts/fetch-okx-sample.mjs",
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build"
+  },
+  "dependencies": {
+    "@klinecharts/extension": "^0.1.0",
+    "@klinecharts/pro": "^0.1.1",
+    "klinecharts": "^10.1.0",
+    "klinecharts-v9": "npm:klinecharts@^10.1.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@storybook/addon-docs": "^10.6.3",
+    "@storybook/addon-vitest": "^10.6.3",
+    "@storybook/react-vite": "^10.6.3",
+    "@types/node": "^26.6.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "@vitest/browser-playwright": "latest",
+    "@vitest/coverage-v8": "latest",
+    "oxlint": "^1.89.0",
+    "playwright": "latest",
+    "storybook": "^10.6.3",
+    "typescript": "~7.0.2",
+    "vite": "^8.3.5",
+    "vitest": "latest"
+  },
+  "exports": {
+    "./adachart": {
+      "types": "./dist/components/adachart/AdaChart.d.ts",
+      "import": "./dist/adachart.js"
+    },
+    "./adachart-pro": {
+      "types": "./dist/components/adachart-pro/AdaChartPro.d.ts",
+      "import": "./dist/adachart-pro.js"
+    },
+    "./adachart-pro.css": "./dist/adachart-pro.css"
+  },
+  "files": [
+    "dist"
+  ],
+  "peerDependencies": {
+    "klinecharts": "^10.0.3",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  }
 }

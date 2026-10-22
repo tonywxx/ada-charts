@@ -4,15 +4,24 @@ import type { Plugin } from "vite";
 import type { StorybookConfig } from "@storybook/react-vite";
 
 /**
- * v9's ESM build, resolved from this project's own dependencies. Not the package
- * name: its `main` field points at a CJS file whose named bindings (`utils`,
- * `init`, …) an ESM importer cannot take. Same file `vite.config.ts` pins.
+ * v9's ESM build, resolved from this project's own dependencies. We cannot
+ * resolve the file by subpath (`klinecharts-v9/dist/index.esm.js`): the package's
+ * `exports` map only exposes the `.` root and `./package.json`, so that subpath
+ * is blocked. Instead resolve the exported `package.json`, then take its `module`
+ * field and join it to the package directory. Not the package name either: its
+ * `main` field points at a CJS file whose named bindings (`utils`, `init`, …) an
+ * ESM importer cannot take. Same resolution `vite.config.ts` uses.
  *
- * v9 的 ESM 产物，从本项目自己的依赖里解析。不能按包名解析：其 `main` 指向 CJS 文件，
- * ESM 引用方取不到里面的具名绑定（`utils`、`init` 等）。与 `vite.config.ts` 钉住同一文件。
+ * v9 的 ESM 产物，从本项目自己的依赖里解析。不能按子路径解析
+ * （`klinecharts-v9/dist/index.esm.js`）：该包的 `exports` 只暴露 `.` 根与
+ * `./package.json`，子路径被挡。改为解析导出的 `package.json`，取其 `module` 字段，
+ * 拼到包目录上。也不能按包名解析：`main` 指向 CJS，ESM 取不到具名绑定
+ * （`utils`、`init` 等）。与 `vite.config.ts` 同一解析方式。
  */
-const klinechartsV9Esm = createRequire(path.join(process.cwd(), "noop.cjs")).resolve(
-	"klinecharts-v9/dist/index.esm.js",
+const requireV9 = createRequire(path.join(process.cwd(), "noop.cjs"));
+const klinechartsV9Esm = path.join(
+	path.dirname(requireV9.resolve("klinecharts-v9/package.json")),
+	requireV9("klinecharts-v9/package.json").module,
 );
 
 /**

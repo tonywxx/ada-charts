@@ -35,12 +35,21 @@ function klinechartsProUsesV9(): Plugin {
   // 产物就会拿 v10 图表去调只有 v9 才有的方法（`init`、`utils`、`ActionType`）。
   // The ESM build specifically: resolving the package by name follows its `main`
   // field into `index.cjs`, and an ESM importer cannot take a named binding such as
-  // `utils` from that, which is what broke story collection once this file was
-  // shared with the vitest project.
+  // `utils` from that. We also cannot resolve by subpath
+  // (`klinecharts-v9/dist/index.esm.js`): the package's `exports` map only exposes
+  // the `.` root and `./package.json`, so that subpath is blocked. So we resolve the
+  // exported `package.json`, take its `module` field, and join it to the package
+  // directory. That is what broke story collection once this file was shared with
+  // the vitest project.
   // 特意指 ESM 那份：按包名解析会顺着 `main` 落到 `index.cjs`，而 ESM 引用方拿不到
-  // `utils` 这类具名绑定 —— 本文件被 vitest project 共用后，正是这一点打断了 story 收集。
-  const v9Id = createRequire(path.join(process.cwd(), 'noop.cjs')).resolve(
-    'klinecharts-v9/dist/index.esm.js',
+  // `utils` 这类具名绑定。也不能按子路径解析（`.../dist/index.esm.js`）：`exports`
+  // 只暴露 `.` 与 `./package.json`，子路径被挡。故改为解析导出的 `package.json`、
+  // 取 `module` 字段并拼到包目录上。本文件被 vitest project 共用后，正是这点打断了
+  // story 收集。
+  const requireV9 = createRequire(path.join(process.cwd(), 'noop.cjs'));
+  const v9Id = path.join(
+    path.dirname(requireV9.resolve('klinecharts-v9/package.json')),
+    requireV9('klinecharts-v9/package.json').module,
   );
   return {
     name: 'klinecharts-pro-uses-v9',
