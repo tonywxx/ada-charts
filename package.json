@@ -48,7 +48,11 @@
       "types": "./dist/components/adachart-pro/AdaChartPro.d.ts",
       "import": "./dist/adachart-pro.js"
     },
-    "./adachart-pro.css": "./dist/adachart-pro.css"
+    "./adachart-pro.css": "./dist/adachart-pro.css",
+    "./chart-link": {
+      "types": "./dist/chart-link.d.ts",
+      "import": "./dist/chart-link.js"
+    }
   },
   "files": [
     "dist"

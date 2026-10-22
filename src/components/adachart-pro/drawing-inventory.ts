@@ -28,7 +28,7 @@ export interface AdaChartProDrawingRow extends ManagedOverlay {
 }
 
 /** The minimal shape `chart.getOverlays()` returns that the inventory reads. 库存所读取的 `chart.getOverlays()` 返回的最小形状。 */
-interface RawOverlay {
+export interface RawOverlay {
 	id: string;
 	name: string;
 	points: readonly unknown[];

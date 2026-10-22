@@ -3,8 +3,6 @@ import type {
 	DataLoader,
 	DeepPartial,
 	Formatter,
-	OverlayCreate,
-	OverlayEvent,
 	OverlayMode,
 	Period,
 	Styles,
@@ -29,16 +27,8 @@ import {
 } from "./adachart-pro-dialogs";
 import { AdaChartProDrawingBar } from "./adachart-pro-drawing-bar";
 import { AdaChartProDrawingManager } from "./adachart-pro-drawing-manager";
-import {
-	type AdaChartProDrawingRow,
-	type ManagedOverlay,
-	buildManagedRows,
-	selectManagedOverlays,
-} from "./drawing-inventory";
-import {
-	ADACHARTPRO_DRAWING_GROUP_ID,
-	drawingGroupsFor,
-} from "./adachart-pro-drawing-tools";
+import { useDrawingSession } from "./drawing-session";
+import { drawingGroupsFor } from "./adachart-pro-drawing-tools";
 import { messageFor } from "./adachart-pro-messages";
 import {
 	areAdaChartProPropsEqual,
@@ -475,36 +465,6 @@ function AdaChartPro(props: AdaChartProProps) {
 	const [overlayMagnet, setOverlayMagnet] = useState<Exclude<OverlayMode, "normal">>("weak_magnet");
 	const [overlayLocked, setOverlayLocked] = useState(false);
 	const [overlayVisible, setOverlayVisible] = useState(true);
-	/**
-	 * The drawing manager's inventory: what is on the chart, as the chart holds
-	 * it, plus the names the reader has given those drawings, plus which one the
-	 * canvas has selected.
-	 *
-	 * The rows are read back off the instance rather than assembled from what we
-	 * created, because that is the only list that is complete: a caller may draw
-	 * through `api.chart()` directly, and `removeOverlay` answers to a filter
-	 * rather than to an id, so "what exists now" is a question only the chart can
-	 * answer. See {@link refreshManagedOverlays}.
-	 *
-	 * Names are held here rather than written onto the overlays: `extendData` is
-	 * the only field a name could live in, and it belongs to whoever created the
-	 * overlay — a managed name that clobbers a caller's own data is a worse trade
-	 * than a name that lives and dies with this component.
-	 *
-	 * 画线管理器的清单：图表上有什么（以图表自己的说法），加上读者给这些画线取的名字，以及画布选中的
-	 * 是哪一条。
-	 *
-	 * 各行是从实例读回来的，而不是由我们创建时留下的记录拼出的，因为只有前者是完整的清单：调用方可能
-	 * 直接用 `api.chart()` 画线，而 `removeOverlay` 只认过滤条件而不认某个 id，因此「现在有什么」只有
-	 * 图表能回答。见 {@link refreshManagedOverlays}。
-	 *
-	 * 名字存在这里而不是写到 overlay 上：唯一能安放名字的字段是 `extendData`，而它属于创建那条 overlay
-	 * 的人 —— 一个会把调用方自己的数据冲掉的托管名称，比一个与本组件同生共死的名称要糟得多。
-	 */
-	const [managedOverlays, setManagedOverlays] = useState<ManagedOverlay[]>([]);
-	const [overlayNames, setOverlayNames] = useState<Record<string, string>>({});
-	/** The overlay the canvas has selected. Only the canvas can start a selection — v10 has no API for it. 画布已选中的 overlay。只有画布能发起选中 —— v10 没有对应 API。 */
-	const [selectedOverlayId, setSelectedOverlayId] = useState<string | null>(null);
 	/** Whether the manager's panel is open. Its availability is the feature flag; this is only the panel. 管理器面板是否打开。它是否可用取决于功能开关，这里只是面板。 */
 	const [drawingManagerOpen, setDrawingManagerOpen] = useState(false);
 	/**
@@ -567,17 +527,76 @@ function AdaChartPro(props: AdaChartProProps) {
 	const styleOverrides = useMemo(() => mergeAdaChartProStyles(
 		resolved.styles, apiStyles ?? undefined, settingsPatch ?? undefined,
 	), [resolved.styles, apiStyles, settingsPatch]);
-	const nativeSettings = useMemo<AdaChartProNativeSettings>(() => ({
-		reverseAxis, drawingEnabled, drawingBarVisible, overlayMode, overlayMagnet,
-		overlayLocked, overlayVisible, overlayNames, styleOverrides,
-	}), [reverseAxis, drawingEnabled, drawingBarVisible, overlayMode, overlayMagnet,
-		overlayLocked, overlayVisible, overlayNames, styleOverrides]);
-	useEffect(() => {
-		onNativeSettingsChange?.(structuredClone(nativeSettings));
-	}, [nativeSettings, onNativeSettingsChange]);
 
 	/** The raw instance, for the drawing API and for {@link AdaChartProApi.chart}. 原始实例，供画线 API 与 {@link AdaChartProApi.chart} 使用。 */
 	const chartRef = useRef<Chart | null>(null);
+	/** The instance as the drawing session reads it; stable, so the session's arming effect is keyed on the tool alone. 画线会话读取实例的取值函数；引用稳定，因此会话的选中效果只以工具为依赖。 */
+	const chartInstance = useCallback(() => chartRef.current, []);
+	/**
+	 * The manager's feature flag, read by the session without being a dependency
+	 * of its arming effect. The bridge is built into the overlay at creation
+	 * time, and that creation is an *effect keyed on the armed tool* — re-running
+	 * it would take away the overlay being drawn. A flag that arrived as a
+	 * dependency would therefore cost the reader the line they were halfway
+	 * through.
+	 *
+	 * The umbrella narrows it: a panel that accounts for what has been drawn
+	 * cannot outlive the surface that draws, so `drawing: false` means no panel
+	 * whichever way {@link AdaChartProProps.drawingManager} is set.
+	 *
+	 * 画线管理器的功能开关，由会话读取、却不是其选中效果的依赖。事件桥是在创建 overlay 时写进去的，
+	 * 而那次创建是一个*以已选工具为依赖的 effect* —— 重跑它会把正在画的那条 overlay 收走。因此若让
+	 * 这个开关作为依赖传进来，代价就是读者画到一半的那条线。
+	 *
+	 * 总开关收窄它：一块清点已画对象的面板不可能活得比绘制它的界面更久，因此 `drawing: false` 意味着
+	 * 没有面板，无论 {@link AdaChartProProps.drawingManager} 怎么设。
+	 */
+	const drawingManagerEnabled = drawingEnabled && resolved.drawingManager;
+	/**
+	 * Everything the drawing layer holds, in one place: the inventory read back
+	 * off the instance, the names the reader gave, the canvas selection, the
+	 * arming effect and the manager's actions. See `drawing-session.ts`.
+	 *
+	 * 画线层持有的一切，集中在一处：从实例读回的清单、读者取的名字、画布选中项、选中工具的效果，以及
+	 * 管理器的各个操作。见 `drawing-session.ts`。
+	 */
+	const drawingSession = useDrawingSession({
+		chart: chartInstance,
+		ready,
+		tool,
+		mode: overlayMode,
+		lock: overlayLocked,
+		managerEnabled: drawingManagerEnabled,
+		locale,
+		onToolChange: setTool,
+	});
+	// Destructured rather than read off the object: each member keeps one identity
+	// for the component's life, while the object itself is new every render — so
+	// these names can be listed as dependencies without re-running their effects.
+	// 解构而不是从对象上读取：每个成员在组件一生中保持同一引用，而对象本身每次渲染都是新的 ——
+	// 因此这些名字可以列为依赖，而不会让它们的 effect 重跑。
+	const {
+		rows: drawingRows,
+		names: drawingNames,
+		selectedId: selectedDrawingId,
+		refresh: refreshDrawings,
+		replaceNames: replaceDrawingNames,
+		rename: renameDrawing,
+		toggleLock: toggleDrawingLock,
+		toggleVisible: toggleDrawingVisibility,
+		bringToFront: bringDrawingToFront,
+		remove: removeDrawing,
+		removeAll: removeAllDrawings,
+	} = drawingSession;
+	const nativeSettings = useMemo<AdaChartProNativeSettings>(() => ({
+		reverseAxis, drawingEnabled, drawingBarVisible, overlayMode, overlayMagnet,
+		overlayLocked, overlayVisible, overlayNames: drawingNames,
+		styleOverrides,
+	}), [reverseAxis, drawingEnabled, drawingBarVisible, overlayMode, overlayMagnet,
+		overlayLocked, overlayVisible, drawingNames, styleOverrides]);
+	useEffect(() => {
+		onNativeSettingsChange?.(structuredClone(nativeSettings));
+	}, [nativeSettings, onNativeSettingsChange]);
 	/**
 	 * The wrapper's own root: what fullscreen is requested on, so the whole
 	 * terminal is maximised rather than the chart alone, and what the surface
@@ -786,86 +805,6 @@ function AdaChartPro(props: AdaChartProProps) {
 		};
 	});
 
-	/**
-	 * The same "as of this render" idea for the drawing layer's two creation-time
-	 * settings, kept apart from {@link stateRef} because the arming effect below
-	 * must read them *without* listing them as dependencies: a magnet flipped
-	 * while an overlay is half drawn has to land on that overlay through
-	 * `overrideOverlay`, not by tearing the overlay down and building a new one,
-	 * which would strand the half-drawn one outside every pane map.
-	 *
-	 * 画线层那两项「创建时」设置的同一套「本渲染取值」思路。它与 {@link stateRef} 分开，是因为
-	 * 下面的选中工具 effect 必须读到它们、但不能把它们列为依赖：在一条 overlay 画到一半时切换
-	 * 磁吸，必须通过 `overrideOverlay` 落在那条 overlay 上，而不是把它拆掉重建 —— 重建会让这条
-	 * 半成品遗留在所有 pane 映射之外。
-	 */
-	const drawingRef = useRef({ mode: overlayMode, lock: overlayLocked });
-	useEffect(() => {
-		drawingRef.current.mode = overlayMode;
-		drawingRef.current.lock = overlayLocked;
-	}, [overlayMode, overlayLocked]);
-
-	/**
-	 * The manager's feature flag, held where the overlay bridge can read it without
-	 * naming it as a dependency. The bridge is built into the overlay at creation
-	 * time, and that creation is an *effect keyed on the armed tool* — re-running it
-	 * would take away the overlay being drawn. A flag that arrived as a dependency
-	 * would therefore cost the reader the line they were halfway through.
-	 *
-	 * 画线管理器的功能开关，放在 overlay 事件桥能读到、却不必把它列为依赖的地方。事件桥是在创建
-	 * overlay 时写进去的，而那次创建是一个*以已选工具为依赖的 effect* —— 重跑它会把正在画的那条
-	 * overlay 收走。因此若让这个开关作为依赖传进来，代价就是读者画到一半的那条线。
-	 *
-	 * The umbrella narrows it: a panel that accounts for what has been drawn cannot
-	 * outlive the surface that draws, so `drawing: false` means no panel whichever
-	 * way {@link AdaChartProProps.drawingManager} is set.
-	 *
-	 * 总开关收窄它：一块清点已画对象的面板不可能活得比绘制它的界面更久，因此 `drawing: false` 意味着
-	 * 没有面板，无论 {@link AdaChartProProps.drawingManager} 怎么设。
-	 */
-	const drawingManagerEnabled = drawingEnabled && resolved.drawingManager;
-	const managerEnabledRef = useRef(drawingManagerEnabled);
-	useEffect(() => {
-		managerEnabledRef.current = drawingManagerEnabled;
-	}, [drawingManagerEnabled]);
-
-	/**
-	 * Re-reads the chart's overlays into the manager's rows.
-	 *
-	 * Everything that changes a drawing calls this rather than editing the rows it
-	 * already has. The chart is the one place that knows what exists — an overlay
-	 * may be removed by a filter that names several, or by the caller through the
-	 * raw instance — so a list maintained beside it would be a second answer to a
-	 * question that already has one.
-	 *
-	 * The bridge below keeps the rows live between calls; the refresh the toolbar's
-	 * toggle performs is what puts drawings into the list that predate the bridge,
-	 * since a drawing made while the flag was off carries no callbacks.
-	 *
-	 * A drawing with no points yet is left out: an armed tool creates its overlay
-	 * immediately, so a row would appear the moment a tool is clicked and vanish
-	 * again if the reader changes their mind — see the arming effect, which removes
-	 * exactly that empty draft.
-	 *
-	 * 把图表上的 overlay 重新读成管理器的各行。
-	 *
-	 * 凡是会改变画线的操作都调它，而不是去改手上已有的那些行。图表是唯一知道「存在什么」的地方 ——
-	 * 一条 overlay 可能被一个点名多条图形的过滤条件移除，也可能被调用方经原始实例移除 —— 因此旁边
-	 * 再维护一份清单，等于对同一个已有答案的问题给出第二个答案。
-	 *
-	 * 下面的事件桥负责在两次调用之间让各行保持新鲜；工具栏开关所做的那次刷新，负责把事件桥之前就
-	 * 存在的画线放进清单，因为开关关闭时画出的线不带任何回调。
-	 *
-	 * 还没有落锚点的画线不在其列：选中工具会立刻创建它的 overlay，因此若把空画线也列出来，一点工具
-	 * 就会出现一行、读者改主意又消失 —— 见选中工具的那个 effect，它移除的正是这条空草稿。
-	 */
-	const refreshManagedOverlays = useCallback(() => {
-		if (!managerEnabledRef.current) return;
-		const chart = chartRef.current;
-		if (!chart) return;
-		setManagedOverlays(selectManagedOverlays(chart.getOverlays()));
-	}, []);
-
 	// The default feed is ours to stop; a caller-supplied one is the caller's.
 	// 默认数据源由我们停止；调用方提供的那个由调用方负责。
 	useEffect(() => () => defaultLoader.dispose(), [defaultLoader]);
@@ -974,7 +913,7 @@ function AdaChartPro(props: AdaChartProProps) {
 				setOverlayMagnet(settings.overlayMagnet);
 				setOverlayLocked(settings.overlayLocked);
 				setOverlayVisible(settings.overlayVisible);
-				setOverlayNames({ ...settings.overlayNames });
+				replaceDrawingNames({ ...settings.overlayNames });
 				setApiStyles(structuredClone(settings.styleOverrides));
 				setSettingsPatch(null);
 			},
@@ -1017,6 +956,7 @@ function AdaChartPro(props: AdaChartProProps) {
 			setSubIndicators,
 			setDrawingEnabled,
 			setDrawingBarVisible,
+			replaceDrawingNames,
 		],
 	);
 
@@ -1028,97 +968,6 @@ function AdaChartPro(props: AdaChartProProps) {
 		},
 		[api],
 	);
-
-	/**
-	 * Arming a tool means asking the engine to start drawing it: v10's
-	 * `createOverlay({ name })` puts the overlay into its interactive drawing
-	 * state machine, and `onDrawEnd` is the signal that the last anchor landed.
-	 *
-	 * The overlay is tagged with `ADACHARTPRO_DRAWING_GROUP_ID`, which is what
-	 * makes "clear all" mean "everything the bar drew" rather than "everything on
-	 * the chart" — The v9 Pro layer leaves this tag off and so cannot tell the
-	 * two apart.
-	 *
-	 * `mode` and `locked` are handed over at creation so the bar's state reaches
-	 * the *next* overlay as well as the existing ones: `overrideOverlay` only
-	 * walks overlays that already exist, so without them the magnet and the lock
-	 * would silently forget about the drawing in progress. `visible` is
-	 * deliberately left out — the engine refuses to draw an overlay whose
-	 * `visible` is `false`, and that includes the one being drawn, so passing it
-	 * would make the tool look broken rather than hidden.
-	 *
-	 * 选中工具即请引擎开始绘制：v10 的 `createOverlay({ name })` 会把该画线推进它自己的
-	 * 交互状态机，`onDrawEnd` 则是最后一枚锚点落下的信号。
-	 *
-	 * 画线带着 `ADACHARTPRO_DRAWING_GROUP_ID` 这个标记，正是它让「清空全部」意指「画线栏画的
-	 * 全部」而非「图表上的全部」—— v9 Pro 层没有打这个标记，因此区分不了两者。
-	 *
-	 * `mode` 与 `locked` 在创建时就交给引擎，使画线栏的状态同样作用于*下一条* overlay 而不只是
-	 * 已有的那些：`overrideOverlay` 只遍历已经存在的 overlay，不这样做的话磁吸与锁定会悄悄
-	 * 忘掉正在画的那一条。`visible` 刻意不传 —— 引擎会拒绝绘制 `visible` 为 `false` 的
-	 * overlay，正在画的那条也不例外，传了只会让工具看起来是坏的，而不是被隐藏。
-	 */
-	useEffect(() => {
-		// `ready` is the chart's existence signal: the instance arrives through
-		// `onChartReady`, so arming a tool before that has nothing to draw on.
-		// `ready` 是图表是否存在的信号：实例通过 `onChartReady` 到达，因此在那之前选中工具
-		// 没有任何东西可画。
-		const chart = ready ? chartRef.current : null;
-		if (!chart || !tool) return;
-		const create: OverlayCreate = {
-			name: tool,
-			groupId: ADACHARTPRO_DRAWING_GROUP_ID,
-			mode: drawingRef.current.mode,
-			lock: drawingRef.current.lock,
-			onDrawEnd: () => {
-				setTool(null);
-				refreshManagedOverlays();
-			},
-			// The manager's bridge. Overlay events do **not** arrive through
-			// `subscribeAction` — v10's action list cannot see an overlay — so the
-			// only way back into React state is on the overlay itself, and it has to
-			// be attached as the overlay is created.
-			//
-			// Attached only while the flag is on, read through the ref rather than
-			// listed as a dependency: this effect creates an overlay, so re-running it
-			// for a flag change would take the half-drawn one away. A drawing made
-			// while the flag is off carries no bridge, which is what the refresh on
-			// opening the panel exists to cover.
-			//
-			// 管理器的桥。overlay 的事件**不**经 `subscribeAction` 传来 —— v10 的动作清单看不见
-			// overlay —— 因此回到 React 状态只有写在 overlay 上这一条路，而且必须在创建它的那一刻
-			// 一起写入。
-			//
-			// 只在开关打开时挂上，且经 ref 读取而不是列为依赖：本 effect 会创建 overlay，因此为开关
-			// 变化重跑它会把正在画的那条收走。开关关闭时画出的线不带桥，这正是「打开面板时刷新一次」
-			// 要覆盖的情形。
-			...(managerEnabledRef.current
-				? {
-						onRemoved: refreshManagedOverlays,
-						onSelected: ({ overlay }: OverlayEvent<unknown>) =>
-							setSelectedOverlayId(overlay.id),
-						// Guarded by id so a stale `onDeselected` from an overlay that
-						// was already replaced cannot clear a newer selection.
-						// 按 id 校验，使一条已被替换的 overlay 迟到的 `onDeselected` 无法清掉
-						// 更新的那次选中。
-						onDeselected: ({ overlay }: OverlayEvent<unknown>) =>
-							setSelectedOverlayId((current) =>
-								current === overlay.id ? null : current,
-							),
-					}
-				: {}),
-		};
-		const created = chart.createOverlay(create);
-		const id = typeof created === "string" ? created : null;
-		return () => {
-			if (!id) return;
-			// Switching or clearing the tool before a single anchor was placed
-			// would otherwise strand an empty overlay on the chart.
-			// 若在一个锚点都没落下前就换工具或清空工具，这里要收掉那条空画线，否则它会滞留在图表上。
-			const [draft] = chart.getOverlays({ id });
-			if (draft && draft.points.length === 0) chart.removeOverlay({ id });
-		};
-	}, [tool, ready, refreshManagedOverlays]);
 
 	/**
 	 * The bar's three toggles are layer state: each lands on every overlay the
@@ -1143,130 +992,14 @@ function AdaChartPro(props: AdaChartProProps) {
 		// unless they are read again.
 		// 管理器的各行带着每条 overlay 的锁定与可见性，而这里一次改掉所有 overlay 的这两项 ——
 		// 因此除非重读一次，各行从此就是过期的。
-		refreshManagedOverlays();
+		refreshDrawings();
 	}, [
 		overlayMode,
 		overlayLocked,
 		overlayVisible,
 		ready,
-		refreshManagedOverlays,
+		refreshDrawings,
 	]);
-
-	/**
-	 * Clearing drops everything the bar drew and disarms the tool with it: the
-	 * engine removes a half-drawn overlay without firing `onDrawEnd`, so without
-	 * this the bar would keep a tool highlighted that has nothing left to draw.
-	 *
-	 * 清空会丢掉画线栏画的一切，并同时取消已选工具：引擎移除半画的 overlay 时不会触发
-	 * `onDrawEnd`，不这样做的话画线栏会继续高亮一个已经没有东西可画的工具。
-	 */
-	const handleRemoveAll = useCallback(() => {
-		chartRef.current?.removeOverlay({ groupId: ADACHARTPRO_DRAWING_GROUP_ID });
-		setTool(null);
-		refreshManagedOverlays();
-	}, [refreshManagedOverlays]);
-
-	/**
-	 * The manager's rows: the inventory plus the names the reader has given, with
-	 * the tool's own label standing in until a drawing is named. One object per
-	 * row rather than a lookup at render, so the panel can be handed its props and
-	 * nothing else.
-	 *
-	 * 管理器的各行：清单加上读者给的名字；被命名之前，由工具自己的文案代为显示。每行一个对象而非
-	 * 渲染时再去查表，使面板拿到的就是它的全部 props。
-	 */
-	const managerRows = useMemo<readonly AdaChartProDrawingRow[]>(
-		() => buildManagedRows(managedOverlays, overlayNames, locale),
-		[managedOverlays, overlayNames, locale],
-	);
-
-	/**
-	 * The panel's five actions are all "the chart said this, believe it": each
-	 * calls the instance and then re-reads it, so a lock that the engine refused
-	 * cannot be shown as taken. Rename is the only one that writes somewhere other
-	 * than the chart — the name lives in this layer, see the state's comment — and
-	 * it is the only one that needs to be read back through the rows rather than
-	 * through the chart.
-	 *
-	 * 面板的五个操作全都是「图表说了算，信它」：每个都先调用实例再重读，因此被引擎拒绝的锁定不会
-	 * 被显示为已锁上。重命名是唯一写到图表以外之处的 —— 名字存在本层，见状态的注释 —— 也是唯一
-	 * 需要靠各行读回来、而不是靠图表读回来的。
-	 */
-	const handleManagerRename = useCallback(
-		(id: string, label: string) => {
-			setOverlayNames((current) => ({ ...current, [id]: label }));
-		},
-		[],
-	);
-
-	const handleManagerToggleLock = useCallback(
-		(id: string) => {
-			const chart = chartRef.current;
-			if (!chart) return;
-			const [overlay] = chart.getOverlays({ id });
-			if (!overlay) return;
-			chart.overrideOverlay({ id, lock: !overlay.lock });
-			refreshManagedOverlays();
-		},
-		[refreshManagedOverlays],
-	);
-
-	const handleManagerToggleVisible = useCallback(
-		(id: string) => {
-			const chart = chartRef.current;
-			if (!chart) return;
-			const [overlay] = chart.getOverlays({ id });
-			if (!overlay) return;
-			chart.overrideOverlay({ id, visible: !overlay.visible });
-			refreshManagedOverlays();
-		},
-		[refreshManagedOverlays],
-	);
-
-	/**
-	 * One rung up the overlay's stack rather than a computed value: raising a line
-	 * above a tall one could need a long jump, and the engine does not say which
-	 * `zLevel`s are taken — a guaranteed step is more use than a guessed one.
-	 *
-	 * 在 overlay 的栈上抬一级，而不是取一个算出来的值：要把一条线抬到很高的那条之上可能得跳很远，
-	 * 而引擎不会说明哪些 `zLevel` 已被占用 —— 一个保证生效的步进，比一个猜出来的数值有用。
-	 */
-	const handleManagerBringToFront = useCallback(
-		(id: string) => {
-			const chart = chartRef.current;
-			if (!chart) return;
-			const [overlay] = chart.getOverlays({ id });
-			if (!overlay) return;
-			chart.overrideOverlay({ id, zLevel: overlay.zLevel + 1 });
-			refreshManagedOverlays();
-		},
-		[refreshManagedOverlays],
-	);
-
-	/**
-	 * `removeOverlay` answers to a filter rather than to an id, so removing is
-	 * scoped by the id — the same escape the v9 Pro layer uses to keep "clear
-	 * all" from meaning "clear everything". The id-filter still goes through the
-	 * chart, because that is where "does it exist" is answered.
-	 *
-	 * `removeOverlay` 只认过滤条件而不认某个 id，因此删除以 id 限定范围 —— 与 v9 Pro 层
-	 * 让「清空全部」不至于变成「清空一切」所用的同一种脱身法。id 过滤仍经图表走，因为「它是否存在」
-	 * 只有那里有答案。
-	 */
-	const handleManagerDelete = useCallback(
-		(id: string) => {
-			chartRef.current?.removeOverlay({ id });
-			setOverlayNames((current) => {
-				if (!(id in current)) return current;
-				const next = { ...current };
-				delete next[id];
-				return next;
-			});
-			setSelectedOverlayId((current) => (current === id ? null : current));
-			refreshManagedOverlays();
-		},
-		[refreshManagedOverlays],
-	);
 
 	/**
 	 * Opening the panel first reads the chart: a drawing made while the flag was
@@ -1281,8 +1014,8 @@ function AdaChartPro(props: AdaChartProProps) {
 	 */
 	const handleToggleDrawingManager = useCallback(() => {
 		setDrawingManagerOpen((current) => !current);
-		refreshManagedOverlays();
-	}, [refreshManagedOverlays]);
+		refreshDrawings();
+	}, [refreshDrawings]);
 
 	/**
 	 * The toolbar's drawing-bar toggle. The bar is chrome, so showing it does not
@@ -1580,7 +1313,7 @@ function AdaChartPro(props: AdaChartProProps) {
 						onMagnetChange={setOverlayMagnet}
 						onLockChange={setOverlayLocked}
 						onVisibleChange={setOverlayVisible}
-						onRemoveAll={handleRemoveAll}
+						onRemoveAll={removeAllDrawings}
 					/>
 				) : null}
 				<div className="adachart-pro__body">
@@ -1693,13 +1426,13 @@ function AdaChartPro(props: AdaChartProProps) {
 					{drawingManagerEnabled && drawingManagerOpen ? (
 						<AdaChartProDrawingManager
 							locale={locale}
-							rows={managerRows}
-							selectedId={selectedOverlayId}
-							onRename={handleManagerRename}
-							onToggleLock={handleManagerToggleLock}
-							onToggleVisible={handleManagerToggleVisible}
-							onBringToFront={handleManagerBringToFront}
-							onDelete={handleManagerDelete}
+							rows={drawingRows}
+							selectedId={selectedDrawingId}
+							onRename={renameDrawing}
+							onToggleLock={toggleDrawingLock}
+							onToggleVisible={toggleDrawingVisibility}
+							onBringToFront={bringDrawingToFront}
+							onDelete={removeDrawing}
 							onClose={handleToggleDrawingManager}
 						/>
 					) : null}

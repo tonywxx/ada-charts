@@ -539,28 +539,4 @@ export function createMemoryDataLoader(hooks: {
 	};
 }
 
-/**
- * A stable structural key for an indicator/overlay list, so the reconcile
- * effect only tears down and rebuilds when the set actually changes.
- *
- * 指标/画线列表的稳定结构键，使协调 effect 仅在组合真正变化时才拆除并重建。
- */
-export function structuralKey(
-	items: ReadonlyArray<unknown> | undefined,
-): string {
-	return JSON.stringify(
-		(items ?? []).map((item) => {
-			if (typeof item === "string") return item;
-			const record = item as Record<string, unknown>;
-			const out: Record<string, unknown> = {};
-			if ("name" in record) out.name = record.name;
-			if ("paneId" in record) out.paneId = record.paneId;
-			if ("id" in record) out.id = record.id;
-			if ("calcParams" in record) out.calcParams = record.calcParams;
-			if ("height" in record) out.height = record.height;
-			if ("order" in record) out.order = record.order;
-			if ("stack" in record) out.stack = record.stack;
-			return out;
-		}),
-	);
-}
+

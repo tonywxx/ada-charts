@@ -42,8 +42,8 @@ import {
 	resolvePeriod,
 	resolveSymbolInfo,
 	sameKLineData,
-	structuralKey,
 } from "./adachart-options";
+import { structuralKey } from "./structural-key";
 import { PatternInterpretation } from "./PatternInterpretation";
 import { observePatternData } from "./pattern-data";
 

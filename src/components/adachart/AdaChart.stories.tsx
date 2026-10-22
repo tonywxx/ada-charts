@@ -1,15 +1,9 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import type { CSSProperties } from "react";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type {
-	Chart,
-	Coordinate,
-	Crosshair,
-	KLineData,
-	OverlayCreate,
-	Point,
-} from "klinecharts";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import type { Chart, KLineData, OverlayCreate } from "klinecharts";
 import AdaChart, { type AdaChartProps } from "./AdaChart";
+import { createChartLinkage } from "../../chart-link";
 import {
 	ADACHART_CANDLE_TYPES,
 	ADACHART_LOCALES,
@@ -166,74 +160,6 @@ function overlaysFor(
 	// 五个锚点可覆盖 2/3/4 步的工具；多余的点会被忽略。
 	const anchors = [50, 38, 26, 14, 4].map(at).filter((p): p is NonNullable<typeof p> => p !== null);
 	return names.map((name) => ({ name, points: anchors }) as OverlayCreate);
-}
-
-/**
- * The pane id `klinecharts` gives the price pane. `AdaChart` keeps its copy
- * private, so the grid spells it out: it is the pane the linked crosshair is
- * mirrored into, and the pane whose width decides whether a timestamp is on
- * screen at all.
- *
- * `klinecharts` 赋予价格面板的 id。`AdaChart` 那份是私有的，因此本网格自己写明：联动十字光标
- * 正是镜像进这个面板，而「某个时间戳是否在屏幕上」也由它的宽度决定。
- */
-const CANDLE_PANE = "candle_pane";
-
-/**
- * The main-pane pixel for a timestamp, or `undefined` when this window cannot
- * place the moment on screen at all — off its visible range, or before the first
- * candle it holds. The pixel is checked here rather than by the caller because
- * "off the left edge" and "off the right edge" both come back as numbers.
- *
- * 某个时间戳在主图上的像素；当该窗口根本放不下这一时刻时（不在可见区间内，或早于它持有的
- * 第一根）为 `undefined`。检查放在这里而不是调用方，是因为「越过左边缘」与「越过右边缘」
- * 都会以数字的形式返回。
- */
-function panePixel(chart: Chart, timestamp: number): number | undefined {
-	const { x } = chart.convertToPixel({ timestamp }, { paneId: CANDLE_PANE }) as Partial<Coordinate>;
-	if (typeof x !== "number") return undefined;
-	const bounding = chart.getSize(CANDLE_PANE, "main");
-	if (!bounding || x < 0 || x > bounding.width) return undefined;
-	return x;
-}
-
-/**
- * Whether a window's series covers an instant; false when the moment precedes
- * its oldest candle.
- *
- * The check is one-sided because the two ends of a series are not symmetrical.
- * The newest bar stands for everything after it — a day bar drawn at midnight is
- * today, whatever the hour the pointer happens to be in — so a moment past the
- * right edge still has a bar to land on. Before the first bar there is nothing,
- * and the engine nevertheless answers such a moment with its nearest bar; a
- * window whose history stops short would therefore draw the crosshair on its
- * oldest candle and name an instant nobody pointed at. A moment out of reach is
- * better skipped than mislabelled — the same reason `panePixel` refuses a pixel
- * off the edge.
- *
- * 某个窗口的序列是否覆盖某一时刻；该时刻早于它最老的一根蜡烛时为否。
- *
- * 这个检查只朝一边，因为序列的两端并不对称。最新一根代表它之后的一切 —— 画在零点的日线就是
- * 「今天」，无论指针此刻在哪个钟点 —— 因此越过右边缘的时刻仍有一根可以落上去。而在第一根之前
- * 什么都没有，引擎却仍会就近答复；历史不够久远的窗口于是会把十字光标画在它最老的那根蜡烛上，
- * 指出的却是一个没人指着的时刻。够不着的时刻，跳过胜过标错 —— 与 `panePixel` 拒绝边缘之外的
- * 像素是同一个理由。
- */
-function coversInstant(chart: Chart, timestamp: number): boolean {
-	const [first] = chart.getDataList();
-	return typeof first?.timestamp === "number" && timestamp >= first.timestamp;
-}
-
-/** How many candles a window is showing; what zoom is linked by. 窗口正在显示多少根蜡烛；zoom 联动以此对齐。 */
-function visibleBarCount(chart: Chart): number | undefined {
-	const range = chart.getVisibleRange();
-	if (!range) return undefined;
-	// `to` is clamped to the data length while `realTo` is not, so the count has
-	// to come from `to`: `realTo` keeps counting into empty space to the right.
-	// `to` 会被限制在数据长度内而 `realTo` 不会，因此根数只能取 `to`：`realTo` 会继续数向右侧
-	// 的空白。
-	const count = range.to - range.from;
-	return count > 0 ? count : undefined;
 }
 
 /** Where one live series stands: what it has drawn, what it was drawn from, and what the socket is doing. 一条实时序列的处境：画着什么、依据什么画的，以及 socket 处于什么状态。 */
@@ -703,46 +629,15 @@ function LiveGrid() {
 	 * 窗口每次渲染读到的是同一个对象，它的记忆化得以保持。
 	 */
 	const [configs, setConfigs] = useState<Record<number, WindowConfig>>({});
-	/** Every mounted window's chart, by id. A ref, not state: registering a chart must not re-render the grid. 每个已挂载窗口的图表，按 id 索引。用 ref 而非 state：登记一张图不应让网格重渲染。 */
-	const charts = useRef(new Map<number, Chart>());
-	/** Set while the grid is the one moving charts, so the events those moves fire come back to a handler that knows not to pass them on. 网格自己驱动图表期间置位，使这些动作引起的事件回到处理器时，处理器知道不要再传出去。 */
-	const applying = useRef(false);
-
 	/**
-	 * Run one move against somebody else's chart with the linkage muted.
+	 * The registry and the moves over it — see `chart-link.ts`, which owns the
+	 * alignment rules and the re-entrancy mute. Held in state so the reference is
+	 * stable; registering a chart must not re-render the grid.
 	 *
-	 * Every programmatic move still fires the engine's own actions: `scrollToTimestamp`
-	 * goes through `scroll`, which fires `onScroll`; `setBarSpace` re-runs the
-	 * visible range. Without the mute, a scroll the grid performed on window B
-	 * would read as the reader having scrolled window B, and would be passed on to
-	 * A and C — which would pass it back.
-	 *
-	 * 在联动静音的情况下，对别人的图表执行一次移动。
-	 *
-	 * 每一次程序化移动仍然会触发引擎自己的动作：`scrollToTimestamp` 经由 `scroll`，会触发
-	 * `onScroll`；`setBarSpace` 会重算可见区间。若没有这层静音，网格对窗口 B 做的一次滚动会被
-	 * 读成「读者滚动了窗口 B」，继而传给 A 和 C —— 而它们又会传回来。
+	 * 登记表及其上的各个移动 —— 见 `chart-link.ts`，对齐规则与重入静音都由它持有。存在 state
+	 * 里以保持引用稳定；登记一张图不应让网格重渲染。
 	 */
-	const muted = useCallback((move: () => void) => {
-		applying.current = true;
-		try {
-			move();
-		} finally {
-			applying.current = false;
-		}
-	}, []);
-
-	/** Drive every window but the one that moved. 驱动除发起者以外的每个窗口。 */
-	const mutedOnOthers = useCallback(
-		(sourceId: number, move: (chart: Chart) => void) => {
-			muted(() => {
-				for (const [id, chart] of charts.current) {
-					if (id !== sourceId) move(chart);
-				}
-			});
-		},
-		[muted],
-	);
+	const [linkage] = useState(createChartLinkage);
 
 	const handleConfigChange = useCallback((id: number, config: WindowConfig) => {
 		setConfigs((prev) => ({ ...prev, [id]: config }));
@@ -756,12 +651,12 @@ function LiveGrid() {
 		//
 		// key 随周期一起变化，因此这个窗口即将重挂、它的图表即将被销毁。在这里就删掉条目 —— 早于
 		// 挂载替代者的那次渲染 —— 这样即使替代者初始化失败，十字光标的循环里也不会留下已销毁的图表。
-		charts.current.delete(id);
+		linkage.unregister(id);
 		setWindows((prev) => prev.map((w) => (w.id === id ? { ...w, barKey } : w)));
-	}, []);
+	}, [linkage]);
 
 	const handleClose = useCallback((id: number) => {
-		charts.current.delete(id);
+		linkage.unregister(id);
 		// The configuration goes with the window: ids are handed out once and
 		// reused by nobody, so a kept entry could only ever be a leak.
 		// 配置随窗口一起消失：id 只发放一次、不会被谁重用，因此留下的条目只会是泄漏。
@@ -771,7 +666,7 @@ function LiveGrid() {
 			return rest;
 		});
 		setWindows((prev) => prev.filter((w) => w.id !== id));
-	}, []);
+	}, [linkage]);
 
 	// Windows are unbounded: the ladder opens with six and the button adds a
 	// seventh, an eighth, however many the reader wants. A new one takes the bar
@@ -790,147 +685,34 @@ function LiveGrid() {
 	}, []);
 
 	const handleReady = useCallback((id: number, chart: Chart) => {
-		charts.current.set(id, chart);
-	}, []);
+		linkage.register(id, chart);
+	}, [linkage]);
 
 	/**
-	 * Carry a window's scroll to the others as the same right-edge instant.
+	 * The four moves that carry one window's view to the rest live in
+	 * `chart-link.ts` — the alignment rules, the re-entrancy mute and the
+	 * `undefined`-clears-a-crosshair rule are all engine knowledge and are kept
+	 * there. These handlers only name the source and pass the switches through.
 	 *
-	 * The right edge is the only thing two bar sizes can agree on about position:
-	 * "how far back am I" is a different question at each period, while "how recent
-	 * is what I am showing" is the same question everywhere. It is also the edge
-	 * live windows start on, so a linked scroll out of history and back is the same
-	 * move in both directions.
-	 *
-	 * 把某个窗口的滚动以同一个右边缘时刻带给其它窗口。
-	 *
-	 * 右边缘是两个周期在「位置」上唯一能达成一致的东西：「我往回走了多远」在每个周期上都是不同的
-	 * 问题，而「我显示的东西有多新」到哪里都是同一个问题。它也是实时窗口起始所在的边，因此联动滚动
-	 * 进历史再回来，两个方向上是同一个动作。
+	 * 把一个窗口的视野带给其余窗口的四个动作都在 `chart-link.ts` 里 —— 对齐规则、重入静音与
+	 * 「用 `undefined` 清除光标」都是引擎知识，一并放在那里。这里的处理器只交出源窗口与开关。
 	 */
 	const handleScroll = useCallback(
-		(sourceId: number) => {
-			if (!linkScroll || applying.current) return;
-			const source = charts.current.get(sourceId);
-			if (!source) return;
-			const range = source.getVisibleRange();
-			const list = source.getDataList();
-			const edge = range ? list[Math.min(range.to, list.length) - 1] : undefined;
-			const timestamp = edge?.timestamp;
-			if (typeof timestamp !== "number") return;
-			mutedOnOthers(sourceId, (chart) => chart.scrollToTimestamp(timestamp));
-		},
-		[linkScroll, mutedOnOthers],
+		(sourceId: number) => linkage.mirrorScroll(sourceId, linkScroll),
+		[linkage, linkScroll],
 	);
 
-	/**
-	 * Carry a window's zoom to the others as the same number of visible candles.
-	 *
-	 * Bar count is the only thing that transfers: a bar width cannot, because the
-	 * same pixels are a minute in one window and a day in another. The width of a
-	 * pane is the same in every window, so a window's own count and bar space are
-	 * enough to solve for the space that shows the wanted count — no need to ask
-	 * the engine how wide the panes are.
-	 *
-	 * 把某个窗口的缩放以相同的可见蜡烛根数带给其它窗口。
-	 *
-	 * 能传递的只有根数：一根的宽度不能，因为同样的像素在一个窗口里是一分钟、在另一个窗口里是一天。
-	 * 每个窗口的面板宽度相同，因此用窗口自己的根数与栏宽就足以解出「显示想要的根数」所需的栏宽 ——
-	 * 不必去问引擎面板有多宽。
-	 */
 	const handleZoom = useCallback(
-		(sourceId: number) => {
-			if (!linkZoom || applying.current) return;
-			const source = charts.current.get(sourceId);
-			if (!source) return;
-			const count = visibleBarCount(source);
-			if (count === undefined) return;
-			mutedOnOthers(sourceId, (chart) => {
-				const own = visibleBarCount(chart);
-				if (own === undefined) return;
-				// `setBarSpace` refuses a space outside the configured limits, so a
-				// count one of these panes cannot reach is declined rather than
-				// clamped — the window keeps a width the reader chose.
-				// `setBarSpace` 会拒绝超出配置上下限的栏宽，因此某个面板达不到的根数是被拒绝而不是被
-				// 钳制 —— 该窗口保留读者选定的宽度。
-				chart.setBarSpace((own * chart.getBarSpace().bar) / count);
-			});
-		},
-		[linkZoom, mutedOnOthers],
+		(sourceId: number) => linkage.mirrorZoom(sourceId, linkZoom),
+		[linkage, linkZoom],
 	);
 
-	/**
-	 * The pointer has left a window, so every mirrored crosshair goes with it.
-	 *
-	 * Hiding a crosshair has no action of its own, so this asks for the same thing
-	 * the engine does to itself when the pointer leaves a chart: `undefined`. That
-	 * is not the same as an empty object — the facade fills a *given* crosshair's
-	 * `paneId` with the candle pane, and a crosshair that names a pane is drawn,
-	 * landing on the last bar because it carries no `x`. `undefined` is the one
-	 * shape the facade passes through untouched, and an unnamed crosshair is what
-	 * nothing looks like.
-	 *
-	 * It has to be asked for at all because the engine hides *its* crosshair
-	 * silently: the action it fires on leave carries no `paneId`, so no handler is
-	 * called, and a mirror, once set, would otherwise sit in the other windows
-	 * forever — pointing at a moment nobody is pointing at any more.
-	 *
-	 * 指针已离开某个窗口，随之离开的还有每一处被镜像的十字光标。
-	 *
-	 * 隐藏光标没有专属动作，因此这里要的是引擎在指针离开图表时对自己做的同一件事：`undefined`。
-	 * 它与空对象并不等价 —— 门面会把*传进来的*光标的 `paneId` 补成蜡烛面板，而一个指明了面板的
-	 * 光标是会被画出来的，又因为它没有 `x`，便落在最后一根上。`undefined` 是门面唯一原样放过的
-	 * 形状，而不指明面板的光标，看上去就是什么都没有。
-	 *
-	 * 之所以必须显式要求它，是因为引擎隐藏*自己*的光标时是不出声的：它在离开时触发的动作不带
-	 * `paneId`，因此没有任何处理器会被调用，而一旦设上，镜像就会永远留在其它窗口里 —— 指着某个
-	 * 已经没人指着的时刻。
-	 */
-	const handleLeave = useCallback(() => {
-		for (const chart of charts.current.values()) {
-			chart.executeAction("onCrosshairChange", undefined as unknown as Crosshair);
-		}
-	}, []);
+	const handleLeave = useCallback(() => linkage.clearCrosshairs(), [linkage]);
 
 	const handleCrosshair = useCallback(
-		(sourceId: number, data: unknown) => {
-			const source = charts.current.get(sourceId);
-			const x = (data as Partial<Coordinate> | undefined)?.x;
-			if (!source || typeof x !== "number") return;
-
-			// The one hop that makes this work: the source's own pixel becomes a
-			// timestamp, and only then may it be carried to anyone else.
-			// 让这件事成立的那一跳：源窗口自己的像素先变成时间戳，此后才可以带给别人。
-			const [point] = source.convertFromPixel([{ x }], {}) as Array<Partial<Point>>;
-			const timestamp = point?.timestamp;
-			if (typeof timestamp !== "number") return;
-
-			for (const [id, chart] of charts.current) {
-				if (id === sourceId) continue;
-				// A window that does not hold the moment is not moved to look for it:
-				// the engine would answer with its oldest candle and draw the crosshair
-				// there, naming an instant the pointer is not on.
-				// 不持有这一时刻的窗口不会为找它而移动：引擎会以它最老的蜡烛作答并把光标画在那里，
-				// 指出的时刻却不是指针所在之处。
-				if (!coversInstant(chart, timestamp)) continue;
-				let pixel = panePixel(chart, timestamp);
-				if (pixel === undefined && linkScroll) {
-					// The moment is off this window's screen, and scroll is linked, so
-					// the window is moved to where the moment is rather than left behind.
-					// It is on screen afterwards by construction: the series covers the
-					// moment, so scrolling can always bring it into view.
-					//
-					// 这一时刻不在该窗口的屏幕上，而滚动是联动的，因此把窗口移到这一时刻所在之处，
-					// 而不是把它落在后面。事后它必然在屏幕上：序列覆盖了这一时刻，滚动总能把它带进
-					// 视野。
-					muted(() => chart.scrollToTimestamp(timestamp));
-					pixel = panePixel(chart, timestamp);
-				}
-				if (pixel === undefined) continue;
-				chart.executeAction("onCrosshairChange", { x: pixel, paneId: CANDLE_PANE });
-			}
-		},
-		[linkScroll, muted],
+		(sourceId: number, data: unknown) =>
+			linkage.mirrorCrosshair(sourceId, data, linkScroll),
+		[linkage, linkScroll],
 	);
 
 	return (

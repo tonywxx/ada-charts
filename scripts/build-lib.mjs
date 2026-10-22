@@ -31,6 +31,10 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 const ENTRIES = {
 	"adachart": "src/components/adachart/AdaChart.tsx",
+	// Cross-window linkage over several charts. It knows the engine, so it ships
+	// next to the component rather than being re-derived by every application.
+	// 多图之间的跨窗口联动。它懂引擎，因此与组件一起发布，而不是让每个应用各自重写一遍。
+	"chart-link": "src/chart-link.ts",
 };
 
 const ADA_PRO_ENTRY = {
